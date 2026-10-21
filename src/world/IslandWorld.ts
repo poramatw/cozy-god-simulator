@@ -94,11 +94,15 @@ export class IslandWorld {
     this.generate(this.seed);
   }
 
+  public getWorldContainer(): Phaser.GameObjects.Container {
+    return this.worldContainer;
+  }
+
   private initWeatherDrops(): void {
     const widthPx = this.config.mapWidth * this.config.tileSize;
     const heightPx = this.config.mapHeight * this.config.tileSize;
     this.weatherDrops = [];
-    for (let i = 0; i < 140; i++) {
+    for (let i = 0; i < 200; i++) {
       this.weatherDrops.push({
         x: Math.random() * widthPx,
         y: Math.random() * heightPx,
@@ -163,7 +167,7 @@ export class IslandWorld {
     const noiseDetail = createNoise2D(createSeededRandom(seed + 202));
     const noiseRiver = createNoise2D(createSeededRandom(seed + 303));
 
-    const { mapWidth, mapHeight, tileSize, noiseScale, detailScale } = this.config;
+    const { mapWidth, mapHeight, noiseScale, detailScale } = this.config;
     const centerX = Math.floor(mapWidth / 2);
     const centerY = Math.floor(mapHeight / 2);
     const maxRadius = Math.min(centerX, centerY) * 0.94;
@@ -176,27 +180,28 @@ export class IslandWorld {
         const distNorm = Math.sqrt(dx * dx + dy * dy);
         const distTiles = Math.hypot(x - centerX, y - centerY);
 
-        const falloff = Math.max(0, 1 - Math.pow(distNorm, 2.2));
+        const falloff = Math.max(0, 1 - Math.pow(distNorm, 2.25));
         const n1 = (noiseMain(x * noiseScale, y * noiseScale) + 1) * 0.5;
         const n2 = (noiseDetail(x * detailScale, y * detailScale) + 1) * 0.5;
-        let elevation = Phaser.Math.Clamp((n1 * 0.78 + n2 * 0.22) * falloff * 1.25, 0, 1);
+        let elevation = Phaser.Math.Clamp((n1 * 0.78 + n2 * 0.22) * falloff * 1.26, 0, 1);
 
-        const riverVal = Math.abs(noiseRiver(x * 0.055, y * 0.055));
-        if (riverVal < 0.068 && distTiles > 6.5 && elevation > 0.24) {
+        const riverVal = Math.abs(noiseRiver(x * 0.042, y * 0.042));
+        if (riverVal < 0.056 && distTiles > 11 && elevation > 0.24) {
           elevation = 0.30;
         }
 
-        if (distTiles <= 7.5) {
-          elevation = Math.max(elevation, 0.55);
+        // Central sanctuary plateau
+        if (distTiles <= 12) {
+          elevation = Math.max(elevation, 0.56);
         }
 
         const biome = this.pickBiome(elevation);
         const angle = Math.atan2(y - centerY, x - centerX);
-        const pathWave = Math.sin(angle * 4 + n2 * 1.5);
+        const pathWave = Math.sin(angle * 4 + n2 * 1.4);
         const isPath =
           biome.walkable &&
           biome.id !== 'shallow_water' &&
-          (distTiles < 5.5 || (distTiles < 17 && pathWave > 0.78));
+          (distTiles < 8.5 || (distTiles < 28 && pathWave > 0.80));
 
         this.grid[y][x] = {
           x,
@@ -208,25 +213,21 @@ export class IslandWorld {
       }
     }
 
-    // 2. Paint Smooth Painterly Terrain Canvas (Non-Pixelated!)
+    // 2. Paint Crisp, Rich Painterly Terrain Canvas (No blurry haze!)
     this.paintSmoothPainterlyTerrain(seed, noiseDetail);
 
-    // 3. Central Village Sanctuary
+    // 3. Central Village Sanctuary (Starts with Campfire + 1 Starter Hut so Kingdom grows organically!)
     this.campfireRes = this.spawnResource('campfire', centerX, centerY, false);
 
-    const villageStructures: { type: ResourceType; ox: number; oy: number }[] = [
-      { type: 'hut', ox: -4, oy: -3 },
-      { type: 'hut', ox: -5, oy: 2 },
-      { type: 'round_hut', ox: 4, oy: -3 },
-      { type: 'round_hut', ox: 5, oy: 2 },
-      { type: 'watchtower', ox: 0, oy: -6 },
+    const starterStructures: { type: ResourceType; ox: number; oy: number }[] = [
+      { type: 'round_hut', ox: -4, oy: -3 },
       { type: 'lantern_tree', ox: -7, oy: 5 },
-      { type: 'lantern_tree', ox: 6, oy: -6 },
-      { type: 'crimson_canopy', ox: 7, oy: 5 },
-      { type: 'crystal', ox: -5, oy: 6 },
+      { type: 'lantern_tree', ox: 7, oy: -5 },
+      { type: 'crimson_canopy', ox: 8, oy: 5 },
+      { type: 'crystal', ox: -6, oy: 6 },
     ];
 
-    for (const st of villageStructures) {
+    for (const st of starterStructures) {
       const tx = centerX + st.ox;
       const ty = centerY + st.oy;
       const t = this.getTile(tx, ty);
@@ -235,36 +236,27 @@ export class IslandWorld {
       }
     }
 
-    // 4. Spawn Lush Painterly Flora across the island
-    for (let y = 2; y < mapHeight - 2; y++) {
-      for (let x = 2; x < mapWidth - 2; x++) {
+    // 4. Spawn Lush Painterly Flora & Stone Deposits across the 128x128 Open World
+    for (let y = 3; y < mapHeight - 3; y++) {
+      for (let x = 3; x < mapWidth - 3; x++) {
         const tile = this.grid[y][x];
         const distCenter = Math.hypot(x - centerX, y - centerY);
-        if (!tile.biome.walkable || tile.resource || distCenter < 6.5) continue;
-
-        if (tile.biome.id === 'shallow_water' && rng() < 0.18) {
-          const px = x * tileSize + tileSize / 2;
-          const py = y * tileSize + tileSize / 2;
-          const cyanGlow = this.scene.add.image(px, py, 'light_cyan');
-          cyanGlow.setBlendMode(Phaser.BlendModes.ADD);
-          cyanGlow.setAlpha(0.45);
-          cyanGlow.setScale(0.85 + rng() * 0.5);
-          this.lightContainer.add(cyanGlow);
-          continue;
-        }
-
+        // Leave room around center (radius 10) for Kingdom Building Construction!
+        if (!tile.biome.walkable || tile.resource || distCenter < 10.5) continue;
         if (tile.isPath || tile.biome.id === 'shallow_water') continue;
 
         const roll = rng();
-        if (roll < tile.biome.berryChance * 0.85) {
+        if (roll < tile.biome.berryChance * 0.72) {
           this.spawnResource('berry_bush', x, y, true);
-        } else if (roll < (tile.biome.berryChance + tile.biome.treeChance) * 0.76) {
+        } else if (tile.elevation > 0.66 && roll < 0.045) {
+          this.spawnResource('mountain_rock', x, y, false);
+        } else if (roll < (tile.biome.berryChance + tile.biome.treeChance) * 0.62) {
           const floraRoll = rng();
-          if (floraRoll < 0.2) {
+          if (floraRoll < 0.18) {
             this.spawnResource('lantern_tree', x, y, false);
-          } else if (floraRoll < 0.38) {
+          } else if (floraRoll < 0.34) {
             this.spawnResource('crimson_canopy', x, y, false);
-          } else if (floraRoll < 0.45) {
+          } else if (floraRoll < 0.41) {
             this.spawnResource('crystal', x, y, false);
           } else {
             this.spawnResource('tree', x, y, false);
@@ -273,7 +265,7 @@ export class IslandWorld {
       }
     }
 
-    this.ensureMinimumResources(rng, 16, 16);
+    this.ensureMinimumResources(rng, 28, 32);
     this.spawnVolumetricMistAndFireflies(rng);
   }
 
@@ -290,9 +282,10 @@ export class IslandWorld {
       this.scene.textures.remove(texKey);
     }
 
-    // Paint at low resolution first and upscale smoothly onto the full canvas for organic painterly blending!
-    const lowW = mapWidth * 4;
-    const lowH = mapHeight * 4;
+    // Higher-definition base terrain grid (8x per tile) for crisp biome transitions without blurry haze
+    const subRes = 6;
+    const lowW = mapWidth * subRes;
+    const lowH = mapHeight * subRes;
     const offCanvas = document.createElement('canvas');
     offCanvas.width = lowW;
     offCanvas.height = lowH;
@@ -303,43 +296,44 @@ export class IslandWorld {
     const data = imgData.data;
 
     for (let ly = 0; ly < lowH; ly++) {
-      const ty = Math.min(mapHeight - 1, Math.floor(ly / 4));
+      const ty = Math.min(mapHeight - 1, Math.floor(ly / subRes));
       for (let lx = 0; lx < lowW; lx++) {
-        const tx = Math.min(mapWidth - 1, Math.floor(lx / 4));
+        const tx = Math.min(mapWidth - 1, Math.floor(lx / subRes));
         const tile = this.grid[ty][tx];
-        const n = noiseDetail(lx * 0.08, ly * 0.08); // -1..1
+        const n = noiseDetail(lx * 0.06, ly * 0.06); // -1..1
+        const micro = noiseDetail(lx * 0.25, ly * 0.25) * 4;
 
-        let r = 12;
-        let g = 20;
-        let b = 34;
+        let r = 10;
+        let g = 18;
+        let b = 30;
 
         if (tile.biome.id === 'deep_water') {
-          r = 9 + n * 4;
-          g = 17 + n * 6;
-          b = 30 + n * 10;
+          r = 8 + n * 4;
+          g = 16 + n * 6;
+          b = 29 + n * 9;
         } else if (tile.biome.id === 'shallow_water') {
-          // Bioluminescent cyan stream
-          r = 28 + n * 12;
-          g = 128 + n * 28;
-          b = 158 + n * 32;
+          // Crisp deep-teal stream
+          r = 22 + n * 10;
+          g = 112 + n * 22;
+          b = 142 + n * 24;
         } else if (tile.isPath) {
-          // Warm worn village earth / cobblestone clearing
-          r = 68 + n * 10;
-          g = 58 + n * 8;
-          b = 49 + n * 7;
+          // Crisp warm cobblestone / packed village earth
+          r = 74 + n * 11 + micro;
+          g = 62 + n * 9 + micro;
+          b = 50 + n * 7 + micro;
         } else if (tile.biome.id === 'sand') {
-          r = 62 + n * 8;
-          g = 56 + n * 7;
-          b = 48 + n * 6;
+          r = 68 + n * 9 + micro;
+          g = 60 + n * 8 + micro;
+          b = 49 + n * 6 + micro;
         } else if (tile.biome.id === 'grass') {
-          r = 38 + n * 9;
-          g = 54 + n * 11;
-          b = 40 + n * 8;
+          r = 34 + n * 9 + micro;
+          g = 52 + n * 12 + micro;
+          b = 36 + n * 7 + micro;
         } else {
-          // Deep atmospheric forest moss
-          r = 24 + n * 7;
-          g = 38 + n * 9;
-          b = 32 + n * 7;
+          // Deep crisp woodland moss
+          r = 21 + n * 7 + micro;
+          g = 36 + n * 10 + micro;
+          b = 28 + n * 7 + micro;
         }
 
         const idx = (ly * lowW + lx) * 4;
@@ -358,9 +352,9 @@ export class IslandWorld {
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(offCanvas, 0, 0, lowW, lowH, 0, 0, widthPx, heightPx);
 
-    // Add soft painterly grass brushstrokes, worn pebbles, and bioluminescent riverbank sheen
+    // Paint crisp high-resolution ground details (sharp grass blades, cobble stones, water ripples)
     const rng = createSeededRandom(seed + 999);
-    for (let i = 0; i < 2400; i++) {
+    for (let i = 0; i < 6500; i++) {
       const px = rng() * widthPx;
       const py = rng() * heightPx;
       const tx = Math.floor(px / tileSize);
@@ -369,24 +363,22 @@ export class IslandWorld {
       if (!tile || !tile.biome.walkable) continue;
 
       if (tile.biome.id === 'shallow_water') {
-        const grad = ctx.createRadialGradient(px, py, 1, px, py, 14);
-        grad.addColorStop(0, 'rgba(130, 248, 255, 0.22)');
-        grad.addColorStop(1, 'rgba(50, 190, 220, 0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(px, py, 14, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (tile.isPath) {
-        ctx.fillStyle = 'rgba(95, 82, 68, 0.28)';
-        ctx.beginPath();
-        ctx.ellipse(px, py, 4 + rng() * 5, 2.5 + rng() * 3, rng() * Math.PI, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = rng() < 0.5 ? 'rgba(72, 98, 68, 0.38)' : 'rgba(32, 48, 38, 0.42)';
+        ctx.strokeStyle = 'rgba(135, 240, 255, 0.28)';
         ctx.lineWidth = 1.2;
         ctx.beginPath();
+        ctx.arc(px, py, 3 + rng() * 5, 0, Math.PI);
+        ctx.stroke();
+      } else if (tile.isPath) {
+        ctx.fillStyle = rng() < 0.5 ? 'rgba(105, 90, 74, 0.42)' : 'rgba(52, 44, 36, 0.38)';
+        ctx.beginPath();
+        ctx.ellipse(px, py, 3.5 + rng() * 4, 2 + rng() * 2.5, rng() * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = rng() < 0.55 ? 'rgba(78, 112, 72, 0.52)' : 'rgba(24, 42, 30, 0.55)';
+        ctx.lineWidth = 1.3;
+        ctx.beginPath();
         ctx.moveTo(px, py);
-        ctx.quadraticCurveTo(px - 2, py - 4, px + (rng() - 0.5) * 4, py - 7);
+        ctx.quadraticCurveTo(px - 1.5, py - 4, px + (rng() - 0.5) * 4, py - 7.5);
         ctx.stroke();
       }
     }
@@ -395,6 +387,7 @@ export class IslandWorld {
     const existing = this.worldContainer.getByName('terrain_base') as Phaser.GameObjects.Image | null;
     if (existing) {
       existing.setTexture(texKey);
+      existing.setPosition(widthPx / 2, heightPx / 2);
     } else {
       const terrainImg = this.scene.add.image(widthPx / 2, heightPx / 2, texKey);
       terrainImg.setName('terrain_base');
@@ -408,35 +401,37 @@ export class IslandWorld {
     const widthPx = mapWidth * tileSize;
     const heightPx = mapHeight * tileSize;
 
-    for (let i = 0; i < 32; i++) {
+    // Subtle, non-hazy atmospheric mist (low count and very low alpha so colors stay crisp!)
+    for (let i = 0; i < 14; i++) {
       const mx = rng() * widthPx;
       const my = rng() * heightPx;
       const mist = this.scene.add.image(mx, my, 'mist_cloud');
       mist.setBlendMode(Phaser.BlendModes.SCREEN);
-      const baseAlpha = 0.22 + rng() * 0.24;
+      const baseAlpha = 0.05 + rng() * 0.05;
       mist.setAlpha(baseAlpha);
-      mist.setScale(0.75 + rng() * 0.9);
+      mist.setScale(0.7 + rng() * 0.6);
       this.mistContainer.add(mist);
 
       this.mistParticles.push({
         sprite: mist,
-        vx: 3.2 + rng() * 5.0,
-        vy: (rng() - 0.5) * 1.6,
+        vx: 3.0 + rng() * 4.5,
+        vy: (rng() - 0.5) * 1.4,
         baseAlpha,
         phase: rng() * Math.PI * 2,
       });
     }
 
-    for (let i = 0; i < 50; i++) {
-      const fx = 140 + rng() * (widthPx - 280);
-      const fy = 140 + rng() * (heightPx - 280);
-      const isWarm = rng() < 0.55;
+    // Crisp firefly motes
+    for (let i = 0; i < 85; i++) {
+      const fx = 160 + rng() * (widthPx - 320);
+      const fy = 160 + rng() * (heightPx - 320);
+      const isWarm = rng() < 0.6;
       const mote = this.scene.add.circle(
         fx,
         fy,
-        1.6,
+        1.5,
         isWarm ? 0xffd166 : 0x8ef6ff,
-        0.85
+        0.75
       );
       mote.setBlendMode(Phaser.BlendModes.ADD);
       this.mistContainer.add(mote);
@@ -453,8 +448,8 @@ export class IslandWorld {
 
   private ensureMinimumResources(rng: () => number, minBerries: number, minTrees: number): void {
     const grassTiles: TileData[] = [];
-    for (let y = 3; y < this.config.mapHeight - 3; y++) {
-      for (let x = 3; x < this.config.mapWidth - 3; x++) {
+    for (let y = 4; y < this.config.mapHeight - 4; y++) {
+      for (let x = 4; x < this.config.mapWidth - 4; x++) {
         const t = this.grid[y][x];
         if ((t.biome.id === 'grass' || t.biome.id === 'forest') && !t.resource && !t.isPath) {
           grassTiles.push(t);
@@ -506,8 +501,8 @@ export class IslandWorld {
     switch (type) {
       case 'campfire':
         texKey = 'obj_campfire_0';
-        dispW = 42;
-        dispH = 42;
+        dispW = 44;
+        dispH = 44;
         break;
       case 'lantern_tree':
         texKey = 'obj_lantern_tree';
@@ -530,20 +525,36 @@ export class IslandWorld {
       case 'hut':
         texKey = 'obj_hut';
         canSeeThrough = true;
-        dispW = 80;
-        dispH = 80;
+        dispW = 82;
+        dispH = 82;
         break;
       case 'round_hut':
         texKey = 'obj_round_hut';
         canSeeThrough = true;
-        dispW = 68;
-        dispH = 68;
+        dispW = 70;
+        dispH = 70;
         break;
       case 'watchtower':
         texKey = 'obj_watchtower';
         canSeeThrough = true;
-        dispW = 62;
+        dispW = 64;
+        dispH = 88;
+        break;
+      case 'farm_plot':
+        texKey = 'obj_farm_plot';
+        dispW = 68;
+        dispH = 60;
+        break;
+      case 'stone_smithy':
+        texKey = 'obj_stone_smithy';
+        canSeeThrough = true;
+        dispW = 86;
         dispH = 86;
+        break;
+      case 'construction_site':
+        texKey = 'obj_construction_site';
+        dispW = 72;
+        dispH = 72;
         break;
       case 'crystal':
         texKey = 'obj_crystal';
@@ -579,35 +590,37 @@ export class IslandWorld {
     sprite.setDepth(py);
     this.worldContainer.add(sprite);
 
+    // Subtle, focused local light halos (toned down so there is zero screen haze!)
     let glowSprite: Phaser.GameObjects.Image | undefined;
     if (type === 'campfire') {
       glowSprite = this.scene.add.image(px, py, 'light_warm');
       glowSprite.setBlendMode(Phaser.BlendModes.ADD);
-      glowSprite.setScale(1.25);
-      glowSprite.setAlpha(0.88);
+      glowSprite.setScale(0.75);
+      glowSprite.setAlpha(0.36);
       this.lightContainer.add(glowSprite);
     } else if (
       type === 'lantern_tree' ||
       type === 'hut' ||
       type === 'round_hut' ||
-      type === 'watchtower'
+      type === 'watchtower' ||
+      type === 'stone_smithy'
     ) {
       glowSprite = this.scene.add.image(px, py - 8, 'light_warm');
       glowSprite.setBlendMode(Phaser.BlendModes.ADD);
-      glowSprite.setScale(type === 'lantern_tree' ? 0.68 : 0.55);
-      glowSprite.setAlpha(0.58);
+      glowSprite.setScale(type === 'lantern_tree' ? 0.45 : 0.40);
+      glowSprite.setAlpha(0.24);
       this.lightContainer.add(glowSprite);
     } else if (type === 'crystal') {
       glowSprite = this.scene.add.image(px, py - 4, 'light_magenta');
       glowSprite.setBlendMode(Phaser.BlendModes.ADD);
-      glowSprite.setScale(0.55);
-      glowSprite.setAlpha(0.72);
+      glowSprite.setScale(0.38);
+      glowSprite.setAlpha(0.28);
       this.lightContainer.add(glowSprite);
     } else if (type === 'blessing_shrine') {
       glowSprite = this.scene.add.image(px, py - 6, 'light_cyan');
       glowSprite.setBlendMode(Phaser.BlendModes.ADD);
-      glowSprite.setScale(0.75);
-      glowSprite.setAlpha(0.85);
+      glowSprite.setScale(0.48);
+      glowSprite.setAlpha(0.34);
       this.lightContainer.add(glowSprite);
     }
 
@@ -616,7 +629,7 @@ export class IslandWorld {
       type,
       tileX,
       tileY,
-      hasBerry,
+      hasBerry: type === 'farm_plot' ? true : hasBerry,
       regrowTimer: 0,
       blocksMovement,
       sprite,
@@ -637,6 +650,44 @@ export class IslandWorld {
       tile.resource = undefined;
     }
     this.resources = this.resources.filter((r) => r !== res);
+  }
+
+  /**
+   * Emits animated wood chips, stone sparks, or golden construction sparks at a world position.
+   */
+  public spawnWorkParticles(
+    worldX: number,
+    worldY: number,
+    kind: 'wood' | 'stone' | 'build'
+  ): void {
+    const color =
+      kind === 'wood' ? 0xd99b52 : kind === 'stone' ? 0x94a3b8 : 0xffd166;
+    const count = kind === 'build' ? 5 : 4;
+
+    for (let i = 0; i < count; i++) {
+      const p = this.scene.add.circle(
+        worldX + (Math.random() - 0.5) * 14,
+        worldY - 8 + (Math.random() - 0.5) * 8,
+        kind === 'build' ? 2.4 : 2.0,
+        color,
+        0.95
+      );
+      p.setDepth(worldY + 40);
+      this.worldContainer.add(p);
+
+      const angle = -Math.PI * 0.15 - Math.random() * Math.PI * 0.7;
+      const dist = 10 + Math.random() * 16;
+      this.scene.tweens.add({
+        targets: p,
+        x: p.x + Math.cos(angle) * dist,
+        y: p.y + Math.sin(angle) * dist - 6,
+        alpha: 0,
+        scale: 0.2,
+        duration: 380 + Math.random() * 180,
+        ease: 'Quad.easeOut',
+        onComplete: () => p.destroy(),
+      });
+    }
   }
 
   // --- Phase 3: God's Hand Powers ---
@@ -674,15 +725,9 @@ export class IslandWorld {
     const px = tileX * tileSize + tileSize / 2;
     const py = tileY * tileSize + tileSize / 2;
 
-    const streamPatch = this.scene.add.circle(px, py, tileSize * 0.72, 0x35a7bf, 0.78);
+    const streamPatch = this.scene.add.circle(px, py, tileSize * 0.72, 0x2b8da3, 0.85);
     streamPatch.setDepth(1);
     this.worldContainer.add(streamPatch);
-
-    const cyanGlow = this.scene.add.image(px, py, 'light_cyan');
-    cyanGlow.setBlendMode(Phaser.BlendModes.ADD);
-    cyanGlow.setScale(0.45);
-    cyanGlow.setAlpha(0.5);
-    this.lightContainer.add(cyanGlow);
     return true;
   }
 
@@ -725,7 +770,6 @@ export class IslandWorld {
     const px = tileX * tileSize + tileSize / 2;
     const py = tileY * tileSize + tileSize / 2;
 
-    // Draw branching lightning bolt
     this.fxGraphics.clear();
     this.fxGraphics.lineStyle(3.5, 0xffffff, 1);
     this.fxGraphics.beginPath();
@@ -734,14 +778,16 @@ export class IslandWorld {
     this.fxGraphics.moveTo(currX, currY);
     const segments = 8;
     for (let i = 1; i <= segments; i++) {
-      currX = Phaser.Math.Linear(currX, px, i / segments) + (i < segments ? (Math.random() - 0.5) * 22 : 0);
+      currX =
+        Phaser.Math.Linear(currX, px, i / segments) +
+        (i < segments ? (Math.random() - 0.5) * 22 : 0);
       currY = Phaser.Math.Linear(py - 260, py, i / segments);
       this.fxGraphics.lineTo(currX, currY);
     }
     this.fxGraphics.strokePath();
 
-    this.fxGraphics.fillStyle(0x8ef6ff, 0.65);
-    this.fxGraphics.fillCircle(px, py, 26);
+    this.fxGraphics.fillStyle(0x8ef6ff, 0.55);
+    this.fxGraphics.fillCircle(px, py, 24);
 
     this.scene.time.delayedCall(180, () => {
       this.fxGraphics.clear();
@@ -749,7 +795,6 @@ export class IslandWorld {
 
     this.scene.cameras.main.shake(220, 0.008);
 
-    // Destroy obstacles/resources (except campfire) and beasts in radius 2.2 tiles
     let destroyedCount = 0;
     const toRemove = this.resources.filter(
       (r) =>
@@ -802,10 +847,10 @@ export class IslandWorld {
       this.fireFrame = this.fireFrame === 0 ? 1 : 0;
       if (this.campfireRes?.sprite) {
         this.campfireRes.sprite.setTexture(`obj_campfire_${this.fireFrame}`);
-        this.campfireRes.sprite.setDisplaySize(42, 42);
+        this.campfireRes.sprite.setDisplaySize(44, 44);
       }
       if (this.campfireRes?.glowSprite) {
-        const pulse = 1.22 + Math.sin(this.animClock * 6) * 0.08;
+        const pulse = 0.72 + Math.sin(this.animClock * 6) * 0.06;
         this.campfireRes.glowSprite.setScale(pulse);
       }
     }
@@ -818,13 +863,13 @@ export class IslandWorld {
       if (m.sprite.x > widthPx + 80) m.sprite.x = -80;
       if (m.sprite.y > heightPx + 80) m.sprite.y = -80;
       if (m.sprite.y < -80) m.sprite.y = heightPx + 80;
-      m.sprite.setAlpha(m.baseAlpha + Math.sin(this.animClock * 1.4 + m.phase) * 0.06);
+      m.sprite.setAlpha(m.baseAlpha + Math.sin(this.animClock * 1.4 + m.phase) * 0.02);
     }
 
     for (const f of this.fireflies) {
       f.sprite.x = f.baseX + Math.sin(this.animClock * f.speed + f.phase) * 10;
       f.sprite.y = f.baseY + Math.cos(this.animClock * f.speed * 0.8 + f.phase) * 8;
-      f.sprite.setAlpha(0.35 + (Math.sin(this.animClock * 3 + f.phase) + 1) * 0.32);
+      f.sprite.setAlpha(0.30 + (Math.sin(this.animClock * 3 + f.phase) + 1) * 0.28);
     }
 
     this.renderWeatherParticles(dtRaw, widthPx, heightPx);
@@ -835,12 +880,12 @@ export class IslandWorld {
 
     const regrowMult = this.activeWeather?.berryRegrowMultiplier ?? 1.0;
     for (const res of this.resources) {
-      if (res.type === 'berry_bush' && !res.hasBerry) {
+      if ((res.type === 'berry_bush' || res.type === 'farm_plot') && !res.hasBerry) {
         res.regrowTimer -= simDeltaSec * regrowMult;
         if (res.regrowTimer <= 0) {
           res.regrowTimer = 0;
           res.hasBerry = true;
-          if (res.sprite) {
+          if (res.type === 'berry_bush' && res.sprite) {
             res.sprite.setTexture('obj_bush_full');
             res.sprite.setDisplaySize(36, 36);
           }
@@ -887,7 +932,7 @@ export class IslandWorld {
     if (wId === 'fog') return;
 
     if (wId === 'rain') {
-      this.weatherGraphics.lineStyle(1.2, 0x8ef6ff, 0.45);
+      this.weatherGraphics.lineStyle(1.2, 0x8ef6ff, 0.42);
       this.weatherGraphics.beginPath();
       for (const d of this.weatherDrops) {
         d.x -= d.speed * 0.25 * dt;
@@ -902,7 +947,7 @@ export class IslandWorld {
       }
       this.weatherGraphics.strokePath();
     } else if (wId === 'snow') {
-      this.weatherGraphics.fillStyle(0xf2f7ff, 0.75);
+      this.weatherGraphics.fillStyle(0xf2f7ff, 0.72);
       for (const d of this.weatherDrops) {
         d.y += d.speed * 0.28 * dt;
         d.x += Math.sin(this.animClock * 2 + d.len) * 14 * dt;
@@ -913,21 +958,24 @@ export class IslandWorld {
         this.weatherGraphics.fillCircle(d.x, d.y, 1.8);
       }
     } else if (wId === 'drought') {
-      this.weatherGraphics.fillStyle(0xffae42, 0.28);
-      for (let i = 0; i < 55; i++) {
+      this.weatherGraphics.fillStyle(0xffae42, 0.25);
+      for (let i = 0; i < 65; i++) {
         const d = this.weatherDrops[i];
         d.y -= d.speed * 0.15 * dt;
         if (d.y < 0) d.y = heightPx;
-        this.weatherGraphics.fillCircle(d.x, d.y, 2.2);
+        this.weatherGraphics.fillCircle(d.x, d.y, 2.0);
       }
     }
   }
 
   public harvestBerryBush(res: WorldResource): boolean {
-    if (res.type !== 'berry_bush' || !res.hasBerry) return false;
+    if ((res.type !== 'berry_bush' && res.type !== 'farm_plot') || !res.hasBerry) return false;
     res.hasBerry = false;
-    res.regrowTimer = this.config.berryRegrowSeconds;
-    if (res.sprite) {
+    res.regrowTimer =
+      res.type === 'farm_plot'
+        ? this.config.berryRegrowSeconds * 0.55
+        : this.config.berryRegrowSeconds;
+    if (res.type === 'berry_bush' && res.sprite) {
       res.sprite.setTexture('obj_bush_empty');
       res.sprite.setDisplaySize(36, 36);
     }
@@ -947,6 +995,44 @@ export class IslandWorld {
         if (d < bestDist) {
           bestDist = d;
           nearest = res;
+        }
+      }
+    }
+    return nearest;
+  }
+
+  public findNearestGatherResource(
+    fromX: number,
+    fromY: number,
+    preferStone: boolean
+  ): WorldResource | null {
+    let nearest: WorldResource | null = null;
+    let bestDist = Infinity;
+    for (const res of this.resources) {
+      const isStone = res.type === 'mountain_rock' || res.type === 'crystal';
+      const isWood = res.type === 'tree' || res.type === 'crimson_canopy';
+      if ((preferStone && isStone) || (!preferStone && isWood)) {
+        const d = Math.hypot(res.tileX - fromX, res.tileY - fromY);
+        if (d < bestDist) {
+          bestDist = d;
+          nearest = res;
+        }
+      }
+    }
+    // Fallback to any gatherable resource if preferred type not found
+    if (!nearest) {
+      for (const res of this.resources) {
+        if (
+          res.type === 'tree' ||
+          res.type === 'crimson_canopy' ||
+          res.type === 'mountain_rock' ||
+          res.type === 'crystal'
+        ) {
+          const d = Math.hypot(res.tileX - fromX, res.tileY - fromY);
+          if (d < bestDist) {
+            bestDist = d;
+            nearest = res;
+          }
         }
       }
     }
@@ -979,7 +1065,7 @@ export class IslandWorld {
     let nearest: WorldResource | null = null;
     let bestDist = Infinity;
     for (const res of this.resources) {
-      if (res.type === 'berry_bush' && res.hasBerry) {
+      if ((res.type === 'berry_bush' || res.type === 'farm_plot') && res.hasBerry) {
         const d = Math.hypot(res.tileX - fromX, res.tileY - fromY);
         if (d < bestDist) {
           bestDist = d;
@@ -995,12 +1081,14 @@ export class IslandWorld {
     let bestDist = Infinity;
     for (const res of this.resources) {
       if (
-        res.type === 'lantern_tree' ||
-        res.type === 'tree' ||
         res.type === 'hut' ||
-        res.type === 'round_hut'
+        res.type === 'round_hut' ||
+        res.type === 'lantern_tree' ||
+        res.type === 'tree'
       ) {
-        const d = Math.hypot(res.tileX - fromX, res.tileY - fromY);
+        // Prefer huts slightly by giving them a small distance discount
+        const bonus = res.type === 'hut' || res.type === 'round_hut' ? 0.65 : 1.0;
+        const d = Math.hypot(res.tileX - fromX, res.tileY - fromY) * bonus;
         if (d < bestDist) {
           bestDist = d;
           nearest = res;
@@ -1050,7 +1138,7 @@ export class IslandWorld {
     let trees = 0;
     let shrines = 0;
     for (const r of this.resources) {
-      if (r.type === 'berry_bush') {
+      if (r.type === 'berry_bush' || r.type === 'farm_plot') {
         totalBerries++;
         if (r.hasBerry) ripeBerries++;
       } else if (r.type === 'tree' || r.type === 'lantern_tree' || r.type === 'crimson_canopy') {

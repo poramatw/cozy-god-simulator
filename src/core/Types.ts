@@ -1,3 +1,5 @@
+import Phaser from 'phaser';
+
 export type BiomeId = 'deep_water' | 'shallow_water' | 'sand' | 'grass' | 'forest';
 
 export interface BiomeConfig {
@@ -80,6 +82,75 @@ export interface HeroCustomization {
   cloakColor: string;
 }
 
+export interface BuildingConfig {
+  id: string;
+  name: string;
+  tier: number;
+  icon: string;
+  spriteKey: string;
+  woodCost: number;
+  stoneCost: number;
+  requiredInt: number;
+  requiredLore: number;
+  buildTimeSec: number;
+  maxCount: number;
+  followerCapBonus: number;
+  description: string;
+}
+
+export interface BuildingsData {
+  buildings: BuildingConfig[];
+}
+
+export interface ConstructionSite {
+  id: string;
+  building: BuildingConfig;
+  tileX: number;
+  tileY: number;
+  progressSec: number;
+  totalSec: number;
+  sprite: Phaser.GameObjects.Sprite;
+  progressGraphics: Phaser.GameObjects.Graphics;
+}
+
+export interface FollowerAgent {
+  id: string;
+  name: string;
+  role: 'gatherer' | 'builder' | 'farmer';
+  tileX: number;
+  tileY: number;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  sprite: Phaser.GameObjects.Sprite;
+  toolSprite: Phaser.GameObjects.Image;
+  animTimer: number;
+  taskTimer: number;
+  taskLabel: string;
+}
+
+export interface KingdomSnapshot {
+  wood: number;
+  stone: number;
+  food: number;
+  population: number;
+  maxPopulation: number;
+  prosperity: number;
+  buildingsCount: Record<string, number>;
+  activeSite: {
+    name: string;
+    icon: string;
+    percent: number;
+  } | null;
+  buildingsList: {
+    config: BuildingConfig;
+    count: number;
+    unlocked: boolean;
+    canAfford: boolean;
+  }[];
+}
+
 export interface AgentConfig {
   defaultHeroName: string;
   defaultClanName: string;
@@ -154,6 +225,22 @@ export interface AgentConfig {
       durationSec: number;
       baseScore: number;
     };
+    build_kingdom: {
+      id: 'build_kingdom';
+      label: string;
+      icon: string;
+      durationSec: number;
+      baseScore: number;
+      commitmentBonus: number;
+    };
+    gather_resources: {
+      id: 'gather_resources';
+      label: string;
+      icon: string;
+      durationSec: number;
+      baseScore: number;
+      commitmentBonus: number;
+    };
     explore_island: {
       id: 'explore_island';
       label: string;
@@ -174,6 +261,9 @@ export type ResourceType =
   | 'hut'
   | 'round_hut'
   | 'watchtower'
+  | 'farm_plot'
+  | 'stone_smithy'
+  | 'construction_site'
   | 'crystal'
   | 'mountain_rock'
   | 'blessing_shrine';
@@ -219,6 +309,8 @@ export type ActionId =
   | 'sleep_tree'
   | 'warm_campfire'
   | 'seek_blessing'
+  | 'build_kingdom'
+  | 'gather_resources'
   | 'explore_island';
 
 export interface UtilityScoreItem {
@@ -258,6 +350,7 @@ export interface HeroStatusSnapshot {
   tilesExplored: number;
   generation: number;
   activeWeather: WeatherConfig;
+  kingdom: KingdomSnapshot;
 }
 
 export interface ChronicleEntry {

@@ -44,7 +44,7 @@ export function processSpriteSheet2x2(
     let qw = halfW;
     let qh = halfH;
 
-    const pad = 12;
+    const pad = 10;
     qx += pad;
     qy += pad;
     qw -= pad * 2;
@@ -121,10 +121,10 @@ export function processSpriteSheet2x2(
         const maxC = Math.max(r, g, b);
 
         if (visited[pIdx]) {
-          if (maxC < 12) {
+          if (maxC < 14) {
             data[dIdx + 3] = 0;
           } else {
-            data[dIdx + 3] = Math.min(255, Math.floor((maxC - 12) * 5.2));
+            data[dIdx + 3] = Math.min(255, Math.floor((maxC - 14) * 5.2));
           }
         } else {
           if (spec.removeRedBerries && r > 90 && r > g * 1.3 && r > b * 1.3) {
@@ -173,12 +173,12 @@ export function processSpriteSheet2x2(
       3,
       spec.outWidth / 2,
       spec.outHeight - 10,
-      spec.outWidth * 0.38
+      spec.outWidth * 0.36
     );
-    shadowGrad.addColorStop(0, 'rgba(3, 5, 10, 0.75)');
+    shadowGrad.addColorStop(0, 'rgba(3, 5, 10, 0.72)');
     shadowGrad.addColorStop(1, 'rgba(3, 5, 10, 0)');
     outCtx.fillStyle = shadowGrad;
-    outCtx.fillRect(0, spec.outHeight - 26, spec.outWidth, 26);
+    outCtx.fillRect(0, spec.outHeight - 24, spec.outWidth, 24);
 
     const scale = Math.min((spec.outWidth - 6) / cropW, (spec.outHeight - 6) / cropH);
     const drawW = Math.round(cropW * scale);
@@ -218,10 +218,10 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene): void {
     },
   ]);
 
-  // 3. Smooth Painterly Characters Sheet
+  // 3. Smooth Painterly Characters Sheet (Teen, Adult, Elder, Sleep)
   processSpriteSheet2x2(scene, 'sheet_characters', [
-    { targetKey: 'hero_youth_0', col: 0, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: 0 },
-    { targetKey: 'hero_youth_1', col: 0, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: -4 },
+    { targetKey: 'hero_teen_0', col: 0, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: 0 },
+    { targetKey: 'hero_teen_1', col: 0, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: -4 },
     { targetKey: 'hero_adult_0', col: 1, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: 0 },
     { targetKey: 'hero_adult_1', col: 1, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: -4 },
     { targetKey: 'hero_elder_0', col: 0, row: 1, outWidth: 112, outHeight: 128, walkBobOffset: 0 },
@@ -236,5 +236,49 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene): void {
     { targetKey: 'beast_wolf_1', col: 1, row: 0, outWidth: 140, outHeight: 116, walkBobOffset: -4 },
     { targetKey: 'obj_blessing_shrine', col: 0, row: 1, outWidth: 168, outHeight: 184 },
     { targetKey: 'obj_crystal', col: 1, row: 1, outWidth: 164, outHeight: 164 },
+  ]);
+
+  // 5. Smooth Painterly Phase 4 Kingdom & Early Life Stages Sheet
+  // TL quadrant has Infant (left half) and Child (right half)
+  processSpriteSheet2x2(scene, 'sheet_kingdom', [
+    {
+      targetKey: 'hero_infant_0',
+      col: 0,
+      row: 0,
+      outWidth: 96,
+      outHeight: 108,
+      subCrop: { x0: 0.0, y0: 0.04, x1: 0.47, y1: 0.98 },
+      walkBobOffset: 0,
+    },
+    {
+      targetKey: 'hero_infant_1',
+      col: 0,
+      row: 0,
+      outWidth: 96,
+      outHeight: 108,
+      subCrop: { x0: 0.0, y0: 0.04, x1: 0.47, y1: 0.98 },
+      walkBobOffset: -3,
+    },
+    {
+      targetKey: 'hero_child_0',
+      col: 0,
+      row: 0,
+      outWidth: 104,
+      outHeight: 118,
+      subCrop: { x0: 0.47, y0: 0.02, x1: 0.98, y1: 0.98 },
+      walkBobOffset: 0,
+    },
+    {
+      targetKey: 'hero_child_1',
+      col: 0,
+      row: 0,
+      outWidth: 104,
+      outHeight: 118,
+      subCrop: { x0: 0.47, y0: 0.02, x1: 0.98, y1: 0.98 },
+      walkBobOffset: -4,
+    },
+    { targetKey: 'obj_stone_smithy', col: 1, row: 0, outWidth: 230, outHeight: 230 },
+    { targetKey: 'obj_farm_plot', col: 0, row: 1, outWidth: 210, outHeight: 190 },
+    { targetKey: 'obj_construction_site', col: 1, row: 1, outWidth: 210, outHeight: 210 },
   ]);
 }

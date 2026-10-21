@@ -10,6 +10,7 @@ import {
   UtilityScoreItem,
   WorldResource,
 } from '../core/Types';
+import { KingdomManager } from '../kingdom';
 import { IslandWorld } from '../world/IslandWorld';
 import { findPathAStar, GridPoint } from './Pathfinder';
 import { UtilityBrain } from './UtilityBrain';
@@ -17,6 +18,7 @@ import { UtilityBrain } from './UtilityBrain';
 export class HeroAgent {
   private scene: Phaser.Scene;
   private world: IslandWorld;
+  private kingdom: KingdomManager;
   private config: AgentConfig;
   private allTraits: TraitConfig[];
   private brain: UtilityBrain;
@@ -31,8 +33,8 @@ export class HeroAgent {
   public loreExp = 0;
   public generation = 1;
 
-  public tileX = 32;
-  public tileY = 32;
+  public tileX = 64;
+  public tileY = 64;
   public x = 0;
   public y = 0;
 
@@ -53,6 +55,7 @@ export class HeroAgent {
   private zzzParticleTimer = 0;
   private animTimer = 0;
   private animFrame = 0;
+  private workSwingClock = 0;
   private beastEncounterCooldown = 0;
 
   private path: GridPoint[] = [];
@@ -64,6 +67,7 @@ export class HeroAgent {
   private visitedTiles = new Set<string>();
 
   private sprite: Phaser.GameObjects.Sprite;
+  private toolSprite: Phaser.GameObjects.Image;
   private heroGlow: Phaser.GameObjects.Image;
   private thoughtBg: Phaser.GameObjects.Image;
   private thoughtIcon: Phaser.GameObjects.Image;
@@ -74,12 +78,14 @@ export class HeroAgent {
   constructor(
     scene: Phaser.Scene,
     world: IslandWorld,
+    kingdom: KingdomManager,
     config: AgentConfig,
     allTraits: TraitConfig[],
     onChronicleLog?: (entry: Omit<ChronicleEntry, 'id'>) => void
   ) {
     this.scene = scene;
     this.world = world;
+    this.kingdom = kingdom;
     this.config = config;
     this.allTraits = allTraits;
     this.brain = new UtilityBrain(config);
@@ -105,14 +111,18 @@ export class HeroAgent {
 
     this.heroGlow = this.scene.add.image(0, 0, 'light_warm');
     this.heroGlow.setBlendMode(Phaser.BlendModes.ADD);
-    this.heroGlow.setScale(0.42);
-    this.heroGlow.setAlpha(0.45);
+    this.heroGlow.setScale(0.32);
+    this.heroGlow.setAlpha(0.26);
     this.heroGlow.setDepth(3100);
 
-    this.sprite = this.scene.add.sprite(0, 0, 'hero_youth_0');
-    this.thoughtBg = this.scene.add.image(0, -22, 'thought_bubble');
+    this.sprite = this.scene.add.sprite(0, 0, `${this.getStageSpritePrefix()}_0`);
+    this.toolSprite = this.scene.add.image(0, 0, 'icon_hammer');
+    this.toolSprite.setDisplaySize(16, 16);
+    this.toolSprite.setVisible(false);
+
+    this.thoughtBg = this.scene.add.image(0, -24, 'thought_bubble');
     this.thoughtBg.setDisplaySize(20, 20);
-    this.thoughtIcon = this.scene.add.image(0, -23, 'icon_compass');
+    this.thoughtIcon = this.scene.add.image(0, -25, 'icon_compass');
     this.thoughtIcon.setDisplaySize(13, 13);
     this.thoughtBg.setDepth(3400);
     this.thoughtIcon.setDepth(3401);
@@ -126,11 +136,31 @@ export class HeroAgent {
     this.hunger = Math.min(this.config.needs.hunger.max, this.hunger + 30);
     this.int += 1;
     this.loreExp += 60;
-    this.spawnFloatingText('✨ พรแห่งปัญญา! (INT +1)', '#ffd166');
+    this.kingdom.addResources(10, 8, 5);
+    this.spawnFloatingText('✨ พรแห่งปัญญา! (INT +1, ไม้/หิน +10)', '#ffd166');
     this.logEvent(
-      `ได้รับ "แรงบันดาลใจจากพระเจ้า"! ฟื้นฟูพลังเต็มเปี่ยม พร้อมเพิ่ม INT เป็น ${this.int} และภูมิปัญญา +60`,
+      `ได้รับ "แรงบันดาลใจจากพระเจ้า"! ฟื้นฟูพลังเต็มเปี่ยม พร้อมเพิ่ม INT เป็น ${this.int}, ภูมิปัญญา +60 และทรัพยากรอาณาจักร`,
       'milestone'
     );
+  }
+
+  public triggerNextGenerationHeir(): void {
+    this.generation++;
+    this.baseAge = 1;
+    this.currentAge = 1;
+    this.str += 1;
+    this.int += 1;
+    this.agi += 1;
+    this.health = this.maxHealth;
+    this.hunger = this.config.needs.hunger.max;
+    this.energy = this.config.needs.energy.max;
+    this.currentStage = this.resolveLifeStage(1);
+    this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_0`);
+    this.logEvent(
+      `🌟 สืบทอดมรดกสู่ทายาทรุ่นที่ ${this.generation} แห่ง ${this.clanName}! อาณาจักร สิ่งปลูกสร้าง และภูมิปัญญายังคงอยู่ครบถ้วน`,
+      'milestone'
+    );
+    this.spawnFloatingText(`🌟 ทายาทรุ่นที่ ${this.generation} (วัยทารก)`, '#8ef6ff');
   }
 
   public applyCustomization(custom: HeroCustomization, resetAgeToInfant = true): void {
@@ -204,7 +234,7 @@ export class HeroAgent {
         'milestone'
       );
     } else {
-      this.logEvent(`ออกเดินทางมาตั้งรกรากบนเกาะแห่งใหม่ที่พิกัด (${this.tileX}, ${this.tileY})`, 'info');
+      this.logEvent(`ออกเดินทางมาตั้งรกรากบนทวีปแห่งใหม่ที่พิกัด (${this.tileX}, ${this.tileY})`, 'info');
     }
   }
 
@@ -251,6 +281,7 @@ export class HeroAgent {
           this.world.removeBeast(beast);
           this.loreExp += 40;
           this.str += 1;
+          this.kingdom.addResources(0, 4, 6);
           this.spawnFloatingText('⚔️ ปราบหมาป่าเงา! (STR +1)', '#ffd166');
           this.logEvent(
             `ปะทะและขับไล่หมาป่าเงาแห่งพงไพรสำเร็จ! ได้รับ STR +1 และภูมิปัญญา +40`,
@@ -289,26 +320,19 @@ export class HeroAgent {
     }
 
     if (this.currentAge >= this.config.maxLifespanAge) {
-      this.generation++;
-      this.baseAge = 1;
-      this.currentAge = 1;
-      this.str += 1;
-      this.int += 1;
-      this.agi += 1;
-      this.currentStage = this.resolveLifeStage(1);
-      this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_0`);
-      this.logEvent(
-        `สิ้นสุดตำนานรุ่นก่อน... ทายาทรุ่นที่ ${this.generation} แห่ง ${this.clanName} สืบทอดมรดกและภูมิปัญญาต่อไป!`,
-        'milestone'
-      );
-      this.spawnFloatingText(`🌟 ทายาทรุ่นที่ ${this.generation}`, '#8ef6ff');
+      this.triggerNextGenerationHeir();
     }
   }
 
-  private getTraitMultiplier(key: keyof Pick<
-    TraitConfig,
-    'speedMultiplier' | 'energyDecayMultiplier' | 'sleepRecoveryMultiplier' | 'hungerRestoreMultiplier'
-  >): number {
+  private getTraitMultiplier(
+    key: keyof Pick<
+      TraitConfig,
+      | 'speedMultiplier'
+      | 'energyDecayMultiplier'
+      | 'sleepRecoveryMultiplier'
+      | 'hungerRestoreMultiplier'
+    >
+  ): number {
     let mult = 1.0;
     for (const t of this.activeTraits) {
       mult *= t[key];
@@ -371,7 +395,7 @@ export class HeroAgent {
         0,
         this.maxHealth
       );
-      this.loreExp += (0.4 + this.int * 0.12) * dt;
+      this.loreExp += (0.55 + this.int * 0.14) * dt;
     } else {
       const extraMove = isMoving ? energy.moveExtraDecayPerSec : 0;
       const agiEfficiency = Math.max(0.65, 1 - (this.agi - 5) * 0.03);
@@ -388,15 +412,14 @@ export class HeroAgent {
     }
 
     if (isMoving) {
-      this.loreExp += (0.15 + this.int * 0.05) * dt;
+      this.loreExp += (0.18 + this.int * 0.05) * dt;
     }
 
-    // Snowstorm cold check (safe within 6.5 tiles of the village campfire)
     const fire = this.world.getCampfireResource();
     const distToFire = fire
       ? Math.hypot(this.tileX - fire.tileX, this.tileY - fire.tileY)
       : 99;
-    const isFreezing = weather.coldDamagePerSec > 0 && distToFire > 6.5;
+    const isFreezing = weather.coldDamagePerSec > 0 && distToFire > 8.5;
 
     const strResilience = Math.max(0.5, 1 - (this.str - 5) * 0.06);
     if (isFreezing) {
@@ -430,7 +453,13 @@ export class HeroAgent {
   }
 
   private evaluateBrain(forceReplan: boolean): void {
-    if (this.currentAction === 'eat_berry' && this.actionState === 'performing' && !forceReplan) {
+    if (
+      (this.currentAction === 'eat_berry' ||
+        this.currentAction === 'build_kingdom' ||
+        this.currentAction === 'gather_resources') &&
+      this.actionState === 'performing' &&
+      !forceReplan
+    ) {
       return;
     }
 
@@ -440,6 +469,8 @@ export class HeroAgent {
     const isDangerNear = beasts.some(
       (b) => Math.hypot(b.tileX - this.tileX, b.tileY - this.tileY) <= 5.5 && this.str < 6
     );
+
+    const canBuild = this.kingdom.canStartOrContinueBuild(this.int, Math.floor(this.loreExp));
 
     const result = this.brain.evaluate({
       hunger: this.hunger,
@@ -451,10 +482,13 @@ export class HeroAgent {
       isNight: this.isNight,
       isSnowing: weather.id === 'snow',
       isDangerNear,
+      isInfant: this.currentStage.id === 'infant',
       exploreTraitBonus: this.getExploreTraitBonus(),
       hasRipeBerryOnIsland: stats.ripeBerries > 0,
       hasTreeOnIsland: stats.trees > 0,
       hasBlessingShrine: stats.shrines > 0,
+      canBuildKingdom: canBuild,
+      hasActiveConstruction: this.kingdom.getActiveSite() !== null,
     });
 
     this.latestScores = result.scores;
@@ -471,20 +505,34 @@ export class HeroAgent {
     this.targetResource = null;
     this.actionState = 'idle';
     this.actionTimer = 0;
+    this.toolSprite.setVisible(false);
 
     const iconKey = this.config.actions[nextAction].icon;
     this.thoughtIcon.setTexture(iconKey);
     this.thoughtIcon.setDisplaySize(13, 13);
 
     if (nextAction === 'eat_berry' && prevAction !== 'eat_berry') {
-      this.logEvent(`ท้องเริ่มร้อง (ความอิ่ม ${Math.round(this.hunger)}%) ออกเดินหาพุ่มเบอร์รี่ป่า`, 'food');
+      this.logEvent(
+        `ท้องเริ่มร้อง (ความอิ่ม ${Math.round(this.hunger)}%) ออกเดินหาผลไม้หรือผลผลิตจากแปลงเกษตร`,
+        'food'
+      );
     } else if (nextAction === 'sleep_tree' && prevAction !== 'sleep_tree') {
-      this.logEvent(`ร่างกายอ่อนล้า (พลังงาน ${Math.round(this.energy)}%) มองหาร่มไม้หลิวเพื่อหลับพัก`, 'sleep');
+      this.logEvent(
+        `ร่างกายอ่อนล้า (พลังงาน ${Math.round(this.energy)}%) มองหาบ้านพักหรือร่มไม้เพื่อหลับพัก`,
+        'sleep'
+      );
+    } else if (nextAction === 'build_kingdom' && prevAction !== 'build_kingdom') {
+      this.logEvent(
+        `🔨 เตรียมลงมือก่อสร้างสิ่งปลูกสร้างใหม่เพื่อพัฒนาอาณาจักรตระกูล ${this.clanName}`,
+        'info'
+      );
+    } else if (nextAction === 'gather_resources' && prevAction !== 'gather_resources') {
+      this.logEvent(`🪓 ออกตัดไม้และสกัดหินเพื่อสะสมทรัพยากรสร้างเมือง`, 'info');
     } else if (nextAction === 'warm_campfire' && prevAction !== 'warm_campfire') {
       const isSnow = this.world.getWeather().id === 'snow';
       this.logEvent(
         isSnow
-          ? `❄️ หิมะหนาวเหน็บ! รีบเดินกลับไปผิงไฟศักดิ์สิทธิ์กลางหมู่บ้านเพื่อรักษาชีวิต`
+          ? `❄️ หิมะหนาวเหน็บ! รีบเดินกลับไปผิงไฟศักดิ์สิทธิ์กลางหมู่บ้าน`
           : `เดินกลับเข้าสู่ลานกองไฟศักดิ์สิทธิ์เพื่อผิงไฟและทบทวนความรู้`,
         isSnow ? 'warn' : 'info'
       );
@@ -498,6 +546,10 @@ export class HeroAgent {
       this.handleEatBerryAction(dt);
     } else if (this.currentAction === 'sleep_tree') {
       this.handleSleepTreeAction(dt);
+    } else if (this.currentAction === 'build_kingdom') {
+      this.handleBuildKingdomAction(dt);
+    } else if (this.currentAction === 'gather_resources') {
+      this.handleGatherResourcesAction(dt);
     } else if (this.currentAction === 'warm_campfire') {
       this.handleWarmCampfireAction(dt);
     } else if (this.currentAction === 'seek_blessing') {
@@ -505,6 +557,131 @@ export class HeroAgent {
     } else {
       this.handleExploreAction(dt);
     }
+  }
+
+  private handleBuildKingdomAction(dt: number): void {
+    const site = this.kingdom.ensureConstructionSite(this.int, Math.floor(this.loreExp));
+    if (!site) {
+      this.switchAction('gather_resources');
+      return;
+    }
+
+    if (this.actionState === 'performing') {
+      this.actionTimer -= dt;
+      const buildSpeed = 1 + (this.str - 5) * 0.08 + (this.int - 5) * 0.06;
+      const finished = this.kingdom.advanceConstruction(dt * buildSpeed);
+      this.loreExp += 1.4 * dt;
+
+      if (finished || this.actionTimer <= 0) {
+        if (finished) {
+          this.spawnFloatingText(`🏛️ สร้าง ${site.building.name} สำเร็จ!`, '#ffd166');
+        }
+        this.toolSprite.setVisible(false);
+        this.actionState = 'idle';
+        this.evaluateBrain(true);
+      }
+      return;
+    }
+
+    const dist = Math.hypot(this.tileX - site.tileX, this.tileY - site.tileY);
+    if (dist <= 1.5) {
+      this.actionState = 'performing';
+      this.actionTimer = this.config.actions.build_kingdom.durationSec;
+      this.path = [];
+      return;
+    }
+
+    if (this.path.length === 0) {
+      this.path = findPathAStar(this.world, this.tileX, this.tileY, site.tileX, site.tileY);
+      if (this.path.length === 0) {
+        this.actionState = 'performing';
+        this.actionTimer = this.config.actions.build_kingdom.durationSec;
+        return;
+      }
+      this.actionState = 'moving';
+    }
+
+    this.moveAlongPath(dt);
+  }
+
+  private handleGatherResourcesAction(dt: number): void {
+    if (this.actionState === 'performing') {
+      this.actionTimer -= dt;
+      if (Math.random() < 0.25) {
+        const isStone =
+          this.targetResource?.type === 'mountain_rock' || this.targetResource?.type === 'crystal';
+        this.world.spawnWorkParticles(this.x, this.y, isStone ? 'stone' : 'wood');
+      }
+
+      if (this.actionTimer <= 0) {
+        const isStone =
+          this.targetResource?.type === 'mountain_rock' || this.targetResource?.type === 'crystal';
+        const yieldAmt = 3 + Math.floor(this.str * 0.4);
+        if (isStone) {
+          this.kingdom.addResources(1, yieldAmt, 0);
+          this.spawnFloatingText(`+${yieldAmt} 🪨 หิน`, '#cbd5e1');
+        } else {
+          this.kingdom.addResources(yieldAmt, 1, 0);
+          this.spawnFloatingText(`+${yieldAmt} 🪵 ไม้`, '#f59e0b');
+        }
+        this.loreExp += 6;
+        this.toolSprite.setVisible(false);
+        this.targetResource = null;
+        this.actionState = 'idle';
+        this.evaluateBrain(true);
+      }
+      return;
+    }
+
+    if (!this.targetResource) {
+      const needed = this.kingdom.getNextNeededResource(this.int, Math.floor(this.loreExp));
+      const res = this.world.findNearestGatherResource(
+        this.tileX,
+        this.tileY,
+        needed === 'stone'
+      );
+      if (!res) {
+        this.switchAction('explore_island');
+        return;
+      }
+      this.targetResource = res;
+      // If rock blocks movement, path to an adjacent walkable tile
+      let destX = res.tileX;
+      let destY = res.tileY;
+      if (res.blocksMovement) {
+        const adj = [
+          { x: res.tileX + 1, y: res.tileY },
+          { x: res.tileX - 1, y: res.tileY },
+          { x: res.tileX, y: res.tileY + 1 },
+          { x: res.tileX, y: res.tileY - 1 },
+        ].find((p) => this.world.isWalkable(p.x, p.y));
+        if (adj) {
+          destX = adj.x;
+          destY = adj.y;
+        }
+      }
+      this.path = findPathAStar(this.world, this.tileX, this.tileY, destX, destY);
+      this.actionState = 'moving';
+    }
+
+    const dist = Math.hypot(
+      this.tileX - this.targetResource.tileX,
+      this.tileY - this.targetResource.tileY
+    );
+    if (dist <= 1.5) {
+      this.actionState = 'performing';
+      this.actionTimer = this.config.actions.gather_resources.durationSec;
+      this.path = [];
+      return;
+    }
+
+    if (this.path.length === 0) {
+      this.actionState = 'performing';
+      this.actionTimer = this.config.actions.gather_resources.durationSec;
+      return;
+    }
+
+    this.moveAlongPath(dt);
   }
 
   private handleSeekBlessingAction(dt: number): void {
@@ -519,6 +696,7 @@ export class HeroAgent {
           this.health = this.maxHealth;
           this.int += 1;
           this.str += 1;
+          this.kingdom.addResources(8, 8, 5);
           this.spawnFloatingText('💎 รับพรผลึกดารา! (STR/INT +1)', '#8ef6ff');
           this.logEvent(
             `ซึมซับพลังจากผลึกดาราศักดิ์สิทธิ์! ได้รับ STR +1, INT +1 และภูมิปัญญา +55`,
@@ -573,15 +751,18 @@ export class HeroAgent {
       if (this.actionTimer <= 0) {
         const cfg = this.config.actions.eat_berry;
         if (this.targetResource && this.targetResource.hasBerry) {
+          const isFarm = this.targetResource.type === 'farm_plot';
           this.world.harvestBerryBush(this.targetResource);
           const restoreMult = this.getTraitMultiplier('hungerRestoreMultiplier');
-          const restored = Math.round(cfg.hungerRestore * restoreMult);
+          const restored = Math.round(cfg.hungerRestore * restoreMult * (isFarm ? 1.2 : 1.0));
           this.hunger = Math.min(this.config.needs.hunger.max, this.hunger + restored);
           this.health = Math.min(this.maxHealth, this.health + cfg.healthRestore);
           this.berriesEaten++;
-          this.spawnFloatingText(`+${restored} 🍒`, '#8ef6ff');
+          this.spawnFloatingText(`+${restored} ${isFarm ? '🌾' : '🍒'}`, '#8ef6ff');
           this.logEvent(
-            `เก็บเบอร์รี่ป่ากินที่พิกัด (${this.tileX}, ${this.tileY}) ฟื้นฟูความอิ่ม +${restored}`,
+            isFarm
+              ? `เก็บเกี่ยวผลผลิตจากแปลงเกษตรที่พิกัด (${this.tileX}, ${this.tileY}) ฟื้นฟูความอิ่ม +${restored}`
+              : `เก็บเบอร์รี่ป่ากินที่พิกัด (${this.tileX}, ${this.tileY}) ฟื้นฟูความอิ่ม +${restored}`,
             'food'
           );
         }
@@ -660,7 +841,7 @@ export class HeroAgent {
       this.zzzParticleTimer = 0;
       this.path = [];
       this.logEvent(
-        `เอนกายพักผ่อนใต้แสงโคมไม้ที่พิกัด (${this.tileX}, ${this.tileY}) 💤`,
+        `เอนกายพักผ่อนที่พิกัด (${this.tileX}, ${this.tileY}) 💤`,
         'sleep'
       );
       return;
@@ -758,7 +939,6 @@ export class HeroAgent {
   private moveAlongPath(dt: number): void {
     if (this.path.length === 0) return;
 
-    // Phase 3 Dynamic Obstacle Check: If God spawned a mountain blocking the next step, re-path immediately!
     const nextCheck = this.path[0];
     if (!this.world.isWalkable(nextCheck.x, nextCheck.y)) {
       const finalGoal = this.path[this.path.length - 1];
@@ -832,24 +1012,56 @@ export class HeroAgent {
     }
   }
 
+  /**
+   * Strictly maps all 5 life stages (infant, child, teen, adult, elder)
+   * to their dedicated sprite textures!
+   */
   private getStageSpritePrefix(): string {
     const st = this.currentStage?.id ?? 'adult';
-    if (st === 'elder') return 'hero_elder';
-    if (st === 'adult') return 'hero_adult';
-    return 'hero_youth';
+    switch (st) {
+      case 'infant':
+        return 'hero_infant';
+      case 'child':
+        return 'hero_child';
+      case 'teen':
+        return 'hero_teen';
+      case 'adult':
+        return 'hero_adult';
+      case 'elder':
+        return 'hero_elder';
+      default:
+        return 'hero_adult';
+    }
   }
 
   private updateAnimations(dt: number): void {
     this.animTimer += dt;
+    this.workSwingClock += dt;
 
     if (this.currentAction === 'sleep_tree' && this.actionState === 'performing') {
+      this.toolSprite.setVisible(false);
       this.updateHeroSpriteTexture('hero_sleep');
       return;
     }
 
+    // Swinging tool animation when building or gathering
+    const isWorking =
+      this.actionState === 'performing' &&
+      (this.currentAction === 'build_kingdom' || this.currentAction === 'gather_resources');
+
+    if (isWorking) {
+      this.toolSprite.setVisible(true);
+      this.toolSprite.setTexture(
+        this.currentAction === 'build_kingdom' ? 'icon_hammer' : 'icon_axe'
+      );
+      this.toolSprite.setRotation(Math.sin(this.workSwingClock * 14) * 0.65);
+    } else {
+      this.toolSprite.setVisible(false);
+    }
+
     const prefix = this.getStageSpritePrefix();
 
-    if (this.actionState === 'moving') {
+    if (this.actionState === 'moving' || isWorking) {
       if (this.animTimer >= 0.18) {
         this.animTimer = 0;
         this.animFrame = this.animFrame === 0 ? 1 : 0;
@@ -869,9 +1081,12 @@ export class HeroAgent {
     this.sprite.setDepth(this.y + 3);
     this.heroGlow.setPosition(this.x, this.y - 4);
 
+    this.toolSprite.setPosition(this.x + (this.sprite.flipX ? -10 : 10), this.y - 12);
+    this.toolSprite.setDepth(this.y + 6);
+
     const bobOffset = this.animFrame === 1 ? -1.5 : 0;
-    this.thoughtBg.setPosition(this.x, this.y - 22 + bobOffset);
-    this.thoughtIcon.setPosition(this.x, this.y - 23 + bobOffset);
+    this.thoughtBg.setPosition(this.x, this.y - 24 + bobOffset);
+    this.thoughtIcon.setPosition(this.x, this.y - 25 + bobOffset);
   }
 
   private drawPathLine(): void {
@@ -932,20 +1147,33 @@ export class HeroAgent {
   public getStatusSnapshot(): HeroStatusSnapshot {
     const actionLabel = this.config.actions[this.currentAction].label;
     let actionStateText = 'กำลังครุ่นคิด...';
-    let narrativeAction = 'กำลังเดินสำรวจสายหมอกเรืองแสง';
+    let narrativeAction = 'กำลังเดินสำรวจทวีปเรืองแสง';
 
     if (this.currentAction === 'eat_berry') {
       narrativeAction =
         this.actionState === 'performing'
-          ? 'กำลังเก็บผลเบอร์รี่ป่าริมธารน้ำเรืองแสง'
-          : 'กำลังมุ่งหน้าไปหาพุ่มเบอร์รี่ป่า';
+          ? 'กำลังเก็บผลไม้และพืชผลเกษตรมารับประทาน'
+          : 'กำลังมุ่งหน้าไปหาอาหาร';
       actionStateText = `🍒 ${narrativeAction}`;
     } else if (this.currentAction === 'sleep_tree') {
       narrativeAction =
         this.actionState === 'performing'
-          ? 'กำลังหลับใหลฟื้นฟูพลังอยู่ใต้ร่มไม้โบราณ'
-          : 'กำลังเดินกลับไปพักผ่อนใต้ร่มไม้';
+          ? 'กำลังหลับใหลฟื้นฟูพลังอย่างอบอุ่น'
+          : 'กำลังเดินกลับไปพักผ่อน';
       actionStateText = `💤 ${narrativeAction}`;
+    } else if (this.currentAction === 'build_kingdom') {
+      const site = this.kingdom.getActiveSite();
+      narrativeAction =
+        this.actionState === 'performing'
+          ? `กำลังตอกค้อนก่อสร้าง "${site?.building.name ?? 'สิ่งปลูกสร้าง'}"`
+          : `กำลังเดินทางไปเขตก่อสร้าง "${site?.building.name ?? 'หมู่บ้าน'}"`;
+      actionStateText = `🔨 ${narrativeAction}`;
+    } else if (this.currentAction === 'gather_resources') {
+      narrativeAction =
+        this.actionState === 'performing'
+          ? 'กำลังตัดไม้และสกัดหินเพื่อสร้างอาณาจักร'
+          : 'กำลังเดินไปหาแหล่งไม้และหินในป่า';
+      actionStateText = `🪓 ${narrativeAction}`;
     } else if (this.currentAction === 'warm_campfire') {
       narrativeAction =
         this.actionState === 'performing'
@@ -961,8 +1189,8 @@ export class HeroAgent {
     } else {
       narrativeAction =
         this.actionState === 'performing'
-          ? 'กำลังหยุดชมสายหมอกเรืองแสงท่ามกลางพงไพร'
-          : 'กำลังออกสำรวจเส้นทางใหม่ในพงไพร';
+          ? 'กำลังชมทิวทัศน์ท่ามกลางผืนป่าใหญ่'
+          : 'กำลังออกสำรวจดินแดนกว้างใหญ่';
       actionStateText = `🧭 ${narrativeAction}`;
     }
 
@@ -997,6 +1225,7 @@ export class HeroAgent {
       tilesExplored: this.visitedTiles.size,
       generation: this.generation,
       activeWeather: this.world.getWeather(),
+      kingdom: this.kingdom.getSnapshot(this.int, Math.floor(this.loreExp)),
     };
   }
 }

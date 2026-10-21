@@ -1,9 +1,11 @@
+import Phaser from 'phaser';
 import { renderHeroPortraitToCanvas } from '../core/PixelTextures';
 import {
   ChronicleEntry,
   GodToolId,
   HeroCustomization,
   HeroStatusSnapshot,
+  LifeStageId,
   TileData,
   TimeSpeed,
   TraitConfig,
@@ -18,10 +20,13 @@ export interface HudCallbacks {
   onRegenerateWorld: () => void;
   onCenterHero: () => void;
   onCenterVillage: () => void;
+  onZoomDelta: (delta: number) => void;
+  onZoomFullWorld: () => void;
   onApplyHeroCustomization: (custom: HeroCustomization) => void;
   onSelectWeather: (weatherId: WeatherId) => void;
   onSelectGodTool: (toolId: GodToolId) => void;
   onGrantDivineInspiration: () => void;
+  onTriggerLegacyHeir: () => void;
 }
 
 const CLOAK_PALETTES = [
@@ -41,12 +46,14 @@ const RANDOM_NAMES = [
 ];
 
 export class HudOverlay {
+  private scene: Phaser.Scene;
   private root: HTMLDivElement;
   private callbacks: HudCallbacks;
   private availableTraits: TraitConfig[];
   private weatherList: WeatherConfig[];
   private chronicles: ChronicleEntry[] = [];
   private nextLogId = 1;
+  private allPanelsHidden = false;
 
   // Top Letterbox Elements
   private fpsEl!: HTMLElement;
@@ -58,16 +65,20 @@ export class HudOverlay {
   // Bottom Letterbox Narrative Caption
   private narrativeCaptionEl!: HTMLElement;
 
+  // Collapsible Floating Containers
+  private leftPanel!: HTMLElement;
+  private rightColumn!: HTMLElement;
+  private godToolbar!: HTMLElement;
+
   // God Toolbar Elements (Phase 3)
   private weatherButtons = new Map<WeatherId, HTMLButtonElement>();
   private godToolButtons = new Map<GodToolId, HTMLButtonElement>();
   private godHintEl!: HTMLElement;
 
   // Left Floating Status & Chronicle Panel
-  private leftPanel!: HTMLElement;
   private portraitCanvas!: HTMLCanvasElement;
   private lastPortraitColor = '';
-  private lastPortraitElder = false;
+  private lastPortraitStage: LifeStageId | '' = '';
   private heroNameEl!: HTMLElement;
   private heroStageBadgeEl!: HTMLElement;
   private heroAgeEl!: HTMLElement;
@@ -83,10 +94,12 @@ export class HudOverlay {
 
   private utilitySectionEl!: HTMLElement;
   private utilityContainer!: HTMLElement;
-  private chronicleCardEl!: HTMLElement;
   private chronicleListEl!: HTMLElement;
 
-  // Bottom-Right Watch / Inspector Panel
+  // Right Floating Kingdom & Inspector Panels (Phase 4)
+  private kingdomStockpileEl!: HTMLElement;
+  private kingdomActiveSiteEl!: HTMLElement;
+  private kingdomTechListEl!: HTMLElement;
   private tileInspectorEl!: HTMLElement;
 
   // Phase 2: God's Creation Modal
@@ -102,10 +115,12 @@ export class HudOverlay {
   };
 
   constructor(
+    scene: Phaser.Scene,
     callbacks: HudCallbacks,
     availableTraits: TraitConfig[],
     weatherList: WeatherConfig[]
   ) {
+    this.scene = scene;
     this.callbacks = callbacks;
     this.availableTraits = availableTraits;
     this.weatherList = weatherList;
@@ -140,11 +155,11 @@ export class HudOverlay {
         right: 0;
         height: 46px;
         background: #06070b;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 16px;
+        padding: 0 14px;
         pointer-events: auto;
         z-index: 25;
       }
@@ -154,9 +169,9 @@ export class HudOverlay {
         bottom: 0;
         left: 0;
         right: 0;
-        height: 48px;
+        height: 44px;
         background: #06070b;
-        border-top: 1px solid rgba(255, 255, 255, 0.07);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -166,7 +181,7 @@ export class HudOverlay {
       }
 
       .narrative-caption {
-        font-size: 15.5px;
+        font-size: 15px;
         font-weight: 500;
         color: #f2f4fa;
         letter-spacing: 0.3px;
@@ -176,20 +191,21 @@ export class HudOverlay {
       .pill-group {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 5px;
+        flex-wrap: wrap;
       }
 
       .ref-pill-btn {
         pointer-events: auto;
         cursor: pointer;
         font-family: 'Chakra Petch', sans-serif;
-        font-size: 12px;
+        font-size: 11.5px;
         font-weight: 600;
         color: #d5d9e6;
         background: #1a1c26;
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.09);
         border-radius: 5px;
-        padding: 5px 10px;
+        padding: 4px 9px;
         transition: all 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
       }
 
@@ -209,11 +225,11 @@ export class HudOverlay {
         color: #0e1017;
         font-weight: 700;
         border-color: #f3c66f;
-        box-shadow: 0 0 12px rgba(224, 169, 69, 0.35);
+        box-shadow: 0 0 10px rgba(224, 169, 69, 0.32);
       }
 
       .ref-pill-btn.accent-create {
-        border-color: rgba(142, 246, 255, 0.4);
+        border-color: rgba(142, 246, 255, 0.45);
         color: #8ef6ff;
       }
 
@@ -221,33 +237,73 @@ export class HudOverlay {
         background: #14161f;
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 5px;
-        padding: 5px 12px;
-        font-size: 12px;
+        padding: 4px 10px;
+        font-size: 11.5px;
         color: #c7ccd9;
-        margin-left: 4px;
+        margin-left: 2px;
       }
 
       .dark-glass-panel {
         pointer-events: auto;
-        background: rgba(14, 16, 24, 0.86);
+        background: rgba(12, 14, 22, 0.88);
         backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 8px;
-        padding: 12px 14px;
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+        padding: 10px 12px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+      }
+
+      .panel-header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .panel-title-text {
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #e0a945;
+        letter-spacing: 0.4px;
+      }
+
+      .collapse-toggle-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cbd5e1;
+        border-radius: 4px;
+        width: 22px;
+        height: 20px;
+        font-size: 12px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .collapse-toggle-btn:hover {
+        background: rgba(224, 169, 69, 0.25);
+        color: #ffffff;
+      }
+
+      .panel-body {
+        margin-top: 8px;
+      }
+
+      .panel-body.collapsed {
+        display: none !important;
       }
 
       /* Phase 3: God's Hand Toolbar */
       .god-toolbar {
         position: absolute;
-        bottom: 58px;
+        bottom: 52px;
         left: 50%;
         transform: translateX(-50%);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 6px;
-        padding: 9px 14px;
+        min-width: 320px;
+        max-width: 90vw;
         z-index: 24;
       }
 
@@ -257,42 +313,57 @@ export class HudOverlay {
         gap: 5px;
         flex-wrap: wrap;
         justify-content: center;
+        margin-bottom: 5px;
       }
 
       .left-column {
         position: absolute;
-        top: 56px;
-        left: 14px;
-        width: 310px;
+        top: 54px;
+        left: 12px;
+        width: 305px;
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        max-height: calc(100vh - 118px);
+        gap: 8px;
+        max-height: calc(100vh - 108px);
+        z-index: 22;
+      }
+
+      .right-column {
+        position: absolute;
+        top: 54px;
+        right: 12px;
+        width: 295px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: calc(100vh - 108px);
+        z-index: 22;
       }
 
       .hero-header {
         display: flex;
         align-items: center;
-        gap: 11px;
+        gap: 10px;
         margin-bottom: 8px;
       }
 
       .portrait-box {
-        width: 48px;
-        height: 48px;
-        background: radial-gradient(circle, #24384a 0%, #121521 100%);
-        border: 1px solid rgba(224, 169, 69, 0.5);
-        border-radius: 6px;
+        width: 54px;
+        height: 54px;
+        background: radial-gradient(circle, #24384a 0%, #10131d 100%);
+        border: 1px solid rgba(224, 169, 69, 0.55);
+        border-radius: 7px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         flex-shrink: 0;
+        overflow: hidden;
       }
 
       .portrait-box canvas {
-        width: 42px;
-        height: 42px;
+        width: 50px;
+        height: 50px;
       }
 
       .stage-badge {
@@ -329,7 +400,7 @@ export class HudOverlay {
       }
 
       .need-row {
-        margin-bottom: 6px;
+        margin-bottom: 5px;
       }
 
       .need-label-row {
@@ -342,7 +413,7 @@ export class HudOverlay {
 
       .bar-track {
         width: 100%;
-        height: 7px;
+        height: 6px;
         background: #1e2130;
         border-radius: 3px;
         overflow: hidden;
@@ -357,26 +428,18 @@ export class HudOverlay {
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.4px;
         color: #e0a945;
-        margin: 8px 0 5px 0;
-      }
-
-      .chronicle-panel {
-        flex: 1;
-        min-height: 125px;
-        max-height: 195px;
-        display: flex;
-        flex-direction: column;
+        margin: 6px 0 4px 0;
       }
 
       .chronicle-list {
         overflow-y: auto;
-        flex: 1;
-        font-size: 11.5px;
+        max-height: 150px;
+        font-size: 11px;
         display: flex;
         flex-direction: column;
-        gap: 5px;
+        gap: 4px;
         padding-right: 4px;
       }
 
@@ -400,18 +463,39 @@ export class HudOverlay {
       }
       .chronicle-item.info { border-left-color: #52b788; }
 
-      .watch-card {
-        position: absolute;
-        bottom: 58px;
-        right: 14px;
-        width: 255px;
+      .stockpile-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 6px;
+        padding: 6px;
+        text-align: center;
+        font-size: 11px;
+        margin-bottom: 6px;
+      }
+
+      .tech-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 5px;
+        padding: 4px 7px;
+        margin-bottom: 4px;
+        font-size: 11px;
+      }
+
+      .tech-item.unlocked {
+        border-color: rgba(224, 169, 69, 0.35);
       }
 
       .watch-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 6px;
-        margin-top: 6px;
+        gap: 5px;
+        margin-top: 4px;
       }
 
       .modal-backdrop {
@@ -473,6 +557,40 @@ export class HudOverlay {
     document.head.appendChild(style);
   }
 
+  private createCollapsibleCard(
+    title: string,
+    initiallyCollapsed = false
+  ): { card: HTMLDivElement; body: HTMLDivElement } {
+    const card = document.createElement('div');
+    card.className = 'dark-glass-panel';
+
+    const headerBar = document.createElement('div');
+    headerBar.className = 'panel-header-bar';
+
+    const titleEl = document.createElement('span');
+    titleEl.className = 'panel-title-text';
+    titleEl.textContent = title;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'collapse-toggle-btn';
+    toggleBtn.textContent = initiallyCollapsed ? '+' : '–';
+    toggleBtn.title = 'ย่อ / ขยายหน้าต่างนี้';
+
+    const body = document.createElement('div');
+    body.className = `panel-body ${initiallyCollapsed ? 'collapsed' : ''}`;
+
+    const toggleFn = () => {
+      const isCollapsed = body.classList.toggle('collapsed');
+      toggleBtn.textContent = isCollapsed ? '+' : '–';
+    };
+
+    headerBar.onclick = toggleFn;
+    card.append(headerBar, body);
+    headerBar.append(titleEl, toggleBtn);
+
+    return { card, body };
+  }
+
   private buildLayout(): void {
     // 1. Top Letterbox Bar
     const topBar = document.createElement('div');
@@ -494,9 +612,36 @@ export class HudOverlay {
       this.openCreationModal();
     };
 
+    const zoomOutBtn = document.createElement('button');
+    zoomOutBtn.className = 'ref-pill-btn';
+    zoomOutBtn.textContent = '🔍-';
+    zoomOutBtn.title = 'ซูมออก (Zoom Out)';
+    zoomOutBtn.onclick = () => {
+      this.triggerJuice(zoomOutBtn);
+      this.callbacks.onZoomDelta(-0.35);
+    };
+
+    const zoomInBtn = document.createElement('button');
+    zoomInBtn.className = 'ref-pill-btn';
+    zoomInBtn.textContent = '🔍+';
+    zoomInBtn.title = 'ซูมเข้า (Zoom In)';
+    zoomInBtn.onclick = () => {
+      this.triggerJuice(zoomInBtn);
+      this.callbacks.onZoomDelta(0.35);
+    };
+
+    const fullWorldBtn = document.createElement('button');
+    fullWorldBtn.className = 'ref-pill-btn';
+    fullWorldBtn.textContent = '🗺️ ทั้งทวีป';
+    fullWorldBtn.title = 'ซูมดูแผนที่ Open World ทั้งทวีป';
+    fullWorldBtn.onclick = () => {
+      this.triggerJuice(fullWorldBtn);
+      this.callbacks.onZoomFullWorld();
+    };
+
     const villageBtn = document.createElement('button');
     villageBtn.className = 'ref-pill-btn';
-    villageBtn.textContent = 'Village';
+    villageBtn.textContent = '🏕️ หมู่บ้าน';
     villageBtn.onclick = () => {
       this.triggerJuice(villageBtn);
       this.callbacks.onCenterVillage();
@@ -504,7 +649,7 @@ export class HudOverlay {
 
     this.seeThroughBtn = document.createElement('button');
     this.seeThroughBtn.className = 'ref-pill-btn';
-    this.seeThroughBtn.textContent = 'See-through';
+    this.seeThroughBtn.textContent = '🌲 โปร่งแสง';
     this.seeThroughBtn.onclick = () => {
       this.triggerJuice(this.seeThroughBtn);
       const active = this.callbacks.onToggleSeeThrough();
@@ -513,22 +658,45 @@ export class HudOverlay {
 
     this.watchBtn = document.createElement('button');
     this.watchBtn.className = 'ref-pill-btn active';
-    this.watchBtn.textContent = 'Watch';
+    this.watchBtn.textContent = '🎯 ตามตัวเอก';
     this.watchBtn.onclick = () => {
       this.triggerJuice(this.watchBtn);
       const following = this.callbacks.onToggleFollow();
       this.setFollowState(following);
     };
 
+    const hideAllUiBtn = document.createElement('button');
+    hideAllUiBtn.className = 'ref-pill-btn';
+    hideAllUiBtn.textContent = '👁️ ซ่อน/แสดง UI';
+    hideAllUiBtn.onclick = () => {
+      this.triggerJuice(hideAllUiBtn);
+      this.allPanelsHidden = !this.allPanelsHidden;
+      const disp = this.allPanelsHidden ? 'none' : '';
+      this.leftPanel.style.display = disp;
+      this.rightColumn.style.display = disp;
+      this.godToolbar.style.display = disp;
+      hideAllUiBtn.classList.toggle('active', this.allPanelsHidden);
+    };
+
     const mapBtn = document.createElement('button');
     mapBtn.className = 'ref-pill-btn';
-    mapBtn.textContent = '🎲 New Map';
+    mapBtn.textContent = '🎲 เกาะใหม่';
     mapBtn.onclick = () => {
       this.triggerJuice(mapBtn);
       this.callbacks.onRegenerateWorld();
     };
 
-    rightPills.append(createBtn, villageBtn, this.seeThroughBtn, this.watchBtn, mapBtn);
+    rightPills.append(
+      createBtn,
+      zoomOutBtn,
+      zoomInBtn,
+      fullWorldBtn,
+      villageBtn,
+      this.seeThroughBtn,
+      this.watchBtn,
+      hideAllUiBtn,
+      mapBtn
+    );
 
     const speeds: { speed: TimeSpeed; label: string }[] = [
       { speed: 0, label: '⏸' },
@@ -565,25 +733,17 @@ export class HudOverlay {
 
     this.narrativeCaptionEl = document.createElement('div');
     this.narrativeCaptionEl.className = 'narrative-caption';
-    this.narrativeCaptionEl.textContent = 'เอลิน แห่งโมริมาร์ กำลังสำรวจสายหมอกเรืองแสง';
+    this.narrativeCaptionEl.textContent = 'เอลิน แห่งโมริมาร์ กำลังสำรวจทวีปเรืองแสง';
     bottomBar.appendChild(this.narrativeCaptionEl);
     this.root.appendChild(bottomBar);
 
-    // 3. Phase 3: God's Hand Toolbar (Centered above bottom bar)
-    const godToolbar = document.createElement('div');
-    godToolbar.className = 'dark-glass-panel god-toolbar';
+    // 3. Phase 3: Collapsible God's Hand Toolbar (Centered above bottom bar)
+    const godPanel = this.createCollapsibleCard('⚡ หัตถ์พระเจ้า & สภาพอากาศ (God Powers)', false);
+    this.godToolbar = godPanel.card;
+    this.godToolbar.classList.add('god-toolbar');
 
-    // Row 1: Weather & Instant Divine Blessing
     const weatherRow = document.createElement('div');
     weatherRow.className = 'god-toolbar-row';
-
-    const wTitle = document.createElement('span');
-    wTitle.style.fontSize = '11px';
-    wTitle.style.fontWeight = '700';
-    wTitle.style.color = '#e0a945';
-    wTitle.style.marginRight = '4px';
-    wTitle.textContent = '🌦️ สภาพอากาศ:';
-    weatherRow.appendChild(wTitle);
 
     for (const w of this.weatherList) {
       const btn = document.createElement('button');
@@ -603,36 +763,27 @@ export class HudOverlay {
 
     const inspireBtn = document.createElement('button');
     inspireBtn.className = 'ref-pill-btn accent-create';
-    inspireBtn.textContent = '✨ มอบแรงบันดาลใจ (+INT/Heal)';
+    inspireBtn.textContent = '✨ ประทานพร (+INT/ไม้/หิน)';
     inspireBtn.onclick = () => {
       this.triggerJuice(inspireBtn);
       this.callbacks.onGrantDivineInspiration();
     };
     weatherRow.appendChild(inspireBtn);
 
-    // Row 2: God Brush Tools
     const toolRow = document.createElement('div');
     toolRow.className = 'god-toolbar-row';
 
-    const tTitle = document.createElement('span');
-    tTitle.style.fontSize = '11px';
-    tTitle.style.fontWeight = '700';
-    tTitle.style.color = '#8ef6ff';
-    tTitle.style.marginRight = '4px';
-    tTitle.textContent = '⚡ หัตถ์พระเจ้า:';
-    toolRow.appendChild(tTitle);
-
     const tools: { id: GodToolId; label: string; hint: string }[] = [
-      { id: 'inspect', label: '🖐️ ตรวจสอบ', hint: 'คลิกหรือเลื่อนเมาส์เพื่อตรวจสอบพื้นที่' },
+      { id: 'inspect', label: '🖐️ ตรวจดู', hint: 'คลิกหรือเลื่อนเมาส์เพื่อตรวจสอบพื้นที่' },
       {
         id: 'spawn_mountain',
         label: '⛰️ เสกภูเขา',
-        hint: 'คลิกบนแผนที่เพื่อเสกโขดหินผารูนกั้นทางเดินของบอท',
+        hint: 'คลิกบนแผนที่เพื่อเสกโขดหินผารูน (แหล่งสกัดหินและสิ่งกีดขวาง)',
       },
       {
         id: 'terraform_river',
         label: '🌊 เสกลำธาร',
-        hint: 'คลิกบนแผนที่เพื่อเนรมิตลำธารน้ำตื้นสีฟ้าเรืองแสง',
+        hint: 'คลิกบนแผนที่เพื่อเนรมิตลำธารน้ำตื้น',
       },
       {
         id: 'spawn_berry',
@@ -641,7 +792,7 @@ export class HudOverlay {
       },
       {
         id: 'spawn_beast',
-        label: '🐺 เสกหมาป่าเงา',
+        label: '🐺 เสกหมาป่า',
         hint: 'คลิกบนแผนที่เพื่อปล่อยหมาป่าเงาออกมาทดสอบความกล้าของบอท',
       },
       {
@@ -651,7 +802,7 @@ export class HudOverlay {
       },
       {
         id: 'spawn_blessing',
-        label: '💎 แท่นผลึกดารา',
+        label: '💎 ผลึกดารา',
         hint: 'คลิกบนแผนที่เพื่อประทานผลึกดาราให้บอทเดินมารับพร (+STR/+INT)',
       },
     ];
@@ -675,26 +826,26 @@ export class HudOverlay {
     this.godHintEl = document.createElement('div');
     this.godHintEl.style.fontSize = '10.5px';
     this.godHintEl.style.color = '#9aa1b5';
+    this.godHintEl.style.textAlign = 'center';
     this.godHintEl.textContent = 'คลิกเลือกพลังหัตถ์พระเจ้า แล้วคลิกบนแผนที่เพื่อเสกสิ่งกีดขวางหรือมอบพร';
 
-    godToolbar.append(weatherRow, toolRow, this.godHintEl);
-    this.root.appendChild(godToolbar);
+    godPanel.body.append(weatherRow, toolRow, this.godHintEl);
+    this.root.appendChild(this.godToolbar);
 
-    // 4. Left Floating Panel (Hero Status, Genetics, Life Stage & Chronicle)
+    // 4. Left Floating Column (Collapsible Hero Status + Collapsible Life Chronicle)
     this.leftPanel = document.createElement('div');
     this.leftPanel.className = 'left-column';
 
-    const heroCard = document.createElement('div');
-    heroCard.className = 'dark-glass-panel';
+    const heroPanel = this.createCollapsibleCard('👤 สถานะตัวเอก & สมอง AI (Hero & Brain)', false);
 
     const header = document.createElement('div');
     header.className = 'hero-header';
 
     const portraitBox = document.createElement('div');
     portraitBox.className = 'portrait-box';
-    portraitBox.title = 'คลิกเพื่อโฟกัสตัวเอก';
+    portraitBox.title = 'คลิกเพื่อโฟกัสตัวเอก (รูปตรงตามช่วงวัยปัจจุบัน)';
     this.portraitCanvas = document.createElement('canvas');
-    renderHeroPortraitToCanvas(this.portraitCanvas, '#3b7a57', false);
+    renderHeroPortraitToCanvas(this.portraitCanvas, '#3b7a57', 'infant', this.scene);
     portraitBox.appendChild(this.portraitCanvas);
     portraitBox.onclick = () => {
       this.triggerJuice(portraitBox);
@@ -706,7 +857,7 @@ export class HudOverlay {
 
     this.heroNameEl = document.createElement('div');
     this.heroNameEl.style.fontWeight = '700';
-    this.heroNameEl.style.fontSize = '14px';
+    this.heroNameEl.style.fontSize = '13.5px';
     this.heroNameEl.style.color = '#ffffff';
 
     const subRow = document.createElement('div');
@@ -719,7 +870,7 @@ export class HudOverlay {
     this.heroStageBadgeEl.className = 'stage-badge';
 
     this.heroAgeEl = document.createElement('span');
-    this.heroAgeEl.style.fontSize = '11.5px';
+    this.heroAgeEl.style.fontSize = '11px';
     this.heroAgeEl.style.color = '#b8bfd1';
 
     subRow.append(this.heroStageBadgeEl, this.heroAgeEl);
@@ -747,11 +898,11 @@ export class HudOverlay {
     this.utilitySectionEl = document.createElement('div');
     const brainTitle = document.createElement('div');
     brainTitle.className = 'section-title';
-    brainTitle.textContent = '🧠 สมองตัดสินใจ (Utility AI)';
+    brainTitle.textContent = '🧠 คะแนนตัดสินใจ (Utility AI)';
     this.utilityContainer = document.createElement('div');
     this.utilitySectionEl.append(brainTitle, this.utilityContainer);
 
-    heroCard.append(
+    heroPanel.body.append(
       header,
       this.geneticsRowEl,
       this.traitsRowEl,
@@ -761,38 +912,56 @@ export class HudOverlay {
       this.utilitySectionEl
     );
 
-    // Chronicle Card
-    this.chronicleCardEl = document.createElement('div');
-    this.chronicleCardEl.className = 'dark-glass-panel chronicle-panel';
-
-    const chronTitle = document.createElement('div');
-    chronTitle.className = 'section-title';
-    chronTitle.style.marginTop = '0';
-    chronTitle.textContent = '📜 บันทึกช่วงชีวิต (Life Chronicle)';
-
+    // Collapsible Chronicle Card
+    const chronPanel = this.createCollapsibleCard('📜 บันทึกช่วงชีวิต (Life Chronicle)', false);
     this.chronicleListEl = document.createElement('div');
     this.chronicleListEl.className = 'chronicle-list';
+    chronPanel.body.appendChild(this.chronicleListEl);
 
-    this.chronicleCardEl.append(chronTitle, this.chronicleListEl);
-    this.leftPanel.append(heroCard, this.chronicleCardEl);
+    this.leftPanel.append(heroPanel.card, chronPanel.card);
     this.root.appendChild(this.leftPanel);
 
-    // 5. Bottom-Right "What to watch" Card
-    const watchCard = document.createElement('div');
-    watchCard.className = 'dark-glass-panel watch-card';
+    // 5. Right Floating Column: Phase 4 Kingdom & Tech Tree + Map Controls
+    this.rightColumn = document.createElement('div');
+    this.rightColumn.className = 'right-column';
 
-    const watchTitle = document.createElement('div');
-    watchTitle.style.fontSize = '12px';
-    watchTitle.style.fontWeight = '700';
-    watchTitle.style.color = '#ffffff';
-    watchTitle.textContent = 'What to watch';
+    const kingdomPanel = this.createCollapsibleCard('🏰 อาณาจักร & Tech Tree (Phase 4)', false);
+
+    this.kingdomStockpileEl = document.createElement('div');
+    this.kingdomStockpileEl.className = 'stockpile-grid';
+
+    this.kingdomActiveSiteEl = document.createElement('div');
+    this.kingdomActiveSiteEl.style.marginBottom = '6px';
+
+    this.kingdomTechListEl = document.createElement('div');
+    this.kingdomTechListEl.style.maxHeight = '165px';
+    this.kingdomTechListEl.style.overflowY = 'auto';
+
+    const legacyBtn = document.createElement('button');
+    legacyBtn.className = 'ref-pill-btn accent-create';
+    legacyBtn.style.width = '100%';
+    legacyBtn.style.marginTop = '6px';
+    legacyBtn.textContent = '🌟 สืบทอดทายาทรุ่นถัดไป (Legacy Heir)';
+    legacyBtn.onclick = () => {
+      this.triggerJuice(legacyBtn);
+      this.callbacks.onTriggerLegacyHeir();
+    };
+
+    kingdomPanel.body.append(
+      this.kingdomStockpileEl,
+      this.kingdomActiveSiteEl,
+      this.kingdomTechListEl,
+      legacyBtn
+    );
+
+    const watchPanel = this.createCollapsibleCard('🧭 สำรวจพื้นที่ & มุมกล้อง (Inspector)', false);
 
     const grid = document.createElement('div');
     grid.className = 'watch-grid';
 
     const btnHeroFocus = document.createElement('button');
-    btnHeroFocus.className = 'ref-pill-btn active';
-    btnHeroFocus.textContent = 'Hero life';
+    btnHeroFocus.className = 'ref-pill-btn';
+    btnHeroFocus.textContent = '🎯 โฟกัสตัวเอก';
     btnHeroFocus.onclick = () => {
       this.triggerJuice(btnHeroFocus);
       this.callbacks.onCenterHero();
@@ -800,31 +969,29 @@ export class HudOverlay {
 
     const btnCampFocus = document.createElement('button');
     btnCampFocus.className = 'ref-pill-btn';
-    btnCampFocus.textContent = 'Campfire';
+    btnCampFocus.textContent = '🔥 โฟกัสหมู่บ้าน';
     btnCampFocus.onclick = () => {
       this.triggerJuice(btnCampFocus);
       this.callbacks.onCenterVillage();
     };
 
-    const btnToggleHud = document.createElement('button');
-    btnToggleHud.className = 'ref-pill-btn';
-    btnToggleHud.textContent = 'Toggle HUD';
-    btnToggleHud.onclick = () => {
-      this.triggerJuice(btnToggleHud);
-      const hidden = this.leftPanel.style.display === 'none';
-      this.leftPanel.style.display = hidden ? 'flex' : 'none';
-      btnToggleHud.classList.toggle('active', !hidden);
+    const btnZoomContinent = document.createElement('button');
+    btnZoomContinent.className = 'ref-pill-btn';
+    btnZoomContinent.textContent = '🗺️ ซูมดูทั้งทวีป';
+    btnZoomContinent.onclick = () => {
+      this.triggerJuice(btnZoomContinent);
+      this.callbacks.onZoomFullWorld();
     };
 
     const btnCustomize = document.createElement('button');
     btnCustomize.className = 'ref-pill-btn';
-    btnCustomize.textContent = 'Genetics';
+    btnCustomize.textContent = '🧬 พันธุกรรม';
     btnCustomize.onclick = () => {
       this.triggerJuice(btnCustomize);
       this.openCreationModal();
     };
 
-    grid.append(btnHeroFocus, btnCampFocus, btnToggleHud, btnCustomize);
+    grid.append(btnHeroFocus, btnCampFocus, btnZoomContinent, btnCustomize);
 
     this.tileInspectorEl = document.createElement('div');
     this.tileInspectorEl.style.fontSize = '11px';
@@ -835,13 +1002,15 @@ export class HudOverlay {
     this.tileInspectorEl.textContent = 'ชี้บนแผนที่เพื่อตรวจสอบไบโอมและทรัพยากร';
 
     const shortcutHint = document.createElement('div');
-    shortcutHint.style.fontSize = '10.5px';
+    shortcutHint.style.fontSize = '10px';
     shortcutHint.style.color = '#7c8499';
-    shortcutHint.style.marginTop = '6px';
-    shortcutHint.textContent = 'WASD: pan   Wheel: zoom   Click: God hand';
+    shortcutHint.style.marginTop = '5px';
+    shortcutHint.textContent = 'WASD/ลากเมาส์: เลื่อนจอ • ลูกกลิ้งเมาส์: ซูมเข้า/ออก';
 
-    watchCard.append(watchTitle, grid, this.tileInspectorEl, shortcutHint);
-    this.root.appendChild(watchCard);
+    watchPanel.body.append(grid, this.tileInspectorEl, shortcutHint);
+
+    this.rightColumn.append(kingdomPanel.card, watchPanel.card);
+    this.root.appendChild(this.rightColumn);
   }
 
   private buildCreationModal(): void {
@@ -868,7 +1037,7 @@ export class HudOverlay {
     header.innerHTML = `
       <div>
         <div style="font-size:16px;font-weight:700;color:#e0a945">✨ God's Creation Menu (กำเนิดตัวเอก)</div>
-        <div style="font-size:11.5px;color:#9aa1b5">กำหนดพันธุกรรม ค่าสถานะเริ่มต้น และนิสัยพิเศษก่อนส่งลงสู่เกาะ</div>
+        <div style="font-size:11.5px;color:#9aa1b5">กำหนดพันธุกรรม ค่าสถานะเริ่มต้น และนิสัยพิเศษก่อนส่งลงสู่ทวีป</div>
       </div>
     `;
 
@@ -889,7 +1058,7 @@ export class HudOverlay {
     previewBox.style.width = '64px';
     previewBox.style.height = '64px';
     const previewCanvas = document.createElement('canvas');
-    renderHeroPortraitToCanvas(previewCanvas, this.draftCustom.cloakColor, false);
+    renderHeroPortraitToCanvas(previewCanvas, this.draftCustom.cloakColor, 'adult', this.scene);
     previewBox.appendChild(previewCanvas);
 
     const inputsWrap = document.createElement('div');
@@ -958,9 +1127,9 @@ export class HudOverlay {
     dialog.appendChild(statHeader);
 
     const statsMeta: { key: 'str' | 'int' | 'agi'; label: string; desc: string }[] = [
-      { key: 'str', label: '💪 STR (พละกำลัง)', desc: 'เพิ่ม Max HP, ทนความหนาว และปราบหมาป่าเงาได้' },
-      { key: 'int', label: '🧠 INT (สติปัญญา)', desc: 'สั่งสมแต้มภูมิปัญญาไวขึ้นเมื่อผิงไฟ/สำรวจ' },
-      { key: 'agi', label: '🦶 AGI (ความว่องไว)', desc: 'เดินเร็วขึ้นและใช้พลังงานน้อยลง' },
+      { key: 'str', label: '💪 STR (พละกำลัง)', desc: 'เพิ่มความเร็วสร้างเมือง, ตัดไม้/สกัดหินไว และปราบหมาป่าได้' },
+      { key: 'int', label: '🧠 INT (สติปัญญา)', desc: 'ปลดล็อกสิ่งปลูกสร้าง Tech Tree ขั้นสูงและสั่งสมภูมิปัญญาไวขึ้น' },
+      { key: 'agi', label: '🦶 AGI (ความว่องไว)', desc: 'เดินสำรวจทวีปเร็วขึ้นและใช้พลังงานน้อยลง' },
     ];
 
     for (const st of statsMeta) {
@@ -1046,7 +1215,7 @@ export class HudOverlay {
     confirmBtn.style.padding = '9px';
     confirmBtn.style.marginTop = '12px';
     confirmBtn.style.fontSize = '13.5px';
-    confirmBtn.textContent = '🌟 ประทานชีวิตสู่เกาะ (Begin Life at Age 1)';
+    confirmBtn.textContent = '🌟 ประทานชีวิตสู่ทวีป (Begin Life at Age 1)';
     confirmBtn.onclick = () => {
       this.creationModal.classList.remove('open');
       this.callbacks.onApplyHeroCustomization({ ...this.draftCustom });
@@ -1117,18 +1286,23 @@ export class HudOverlay {
     dayCount: number,
     clockStr: string
   ): void {
-    this.fpsEl.textContent = `${Math.round(fps)} fps  •  รุ่นที่ ${snapshot.generation}`;
-    this.clockPillEl.textContent = `Day ${dayCount}   ${clockStr}   ${snapshot.activeWeather.shortLabel}`;
+    this.fpsEl.textContent = `${Math.round(fps)} fps • รุ่นที่ ${snapshot.generation}`;
+    this.clockPillEl.textContent = `Day ${dayCount}  ${clockStr}  ${snapshot.activeWeather.shortLabel}`;
     this.narrativeCaptionEl.textContent = snapshot.narrativeCaption;
 
-    const isElder = snapshot.lifeStage.id === 'elder';
+    // Sync HUD portrait strictly with the character's current life stage sprite!
     if (
       snapshot.cloakColor !== this.lastPortraitColor ||
-      isElder !== this.lastPortraitElder
+      snapshot.lifeStage.id !== this.lastPortraitStage
     ) {
       this.lastPortraitColor = snapshot.cloakColor;
-      this.lastPortraitElder = isElder;
-      renderHeroPortraitToCanvas(this.portraitCanvas, snapshot.cloakColor, isElder);
+      this.lastPortraitStage = snapshot.lifeStage.id;
+      renderHeroPortraitToCanvas(
+        this.portraitCanvas,
+        snapshot.cloakColor,
+        snapshot.lifeStage.id,
+        this.scene
+      );
     }
 
     this.heroNameEl.textContent = `${snapshot.name} ${snapshot.clanName}`;
@@ -1166,7 +1340,7 @@ export class HudOverlay {
       row.style.marginBottom = '4px';
 
       row.innerHTML = `
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;color:${
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:2px;color:${
           isWinner ? '#e0a945' : '#9aa1b5'
         };font-weight:${isWinner ? '700' : '500'}">
           <span>${isWinner ? '▸ ' : ''}${item.label}</span>
@@ -1179,6 +1353,61 @@ export class HudOverlay {
         </div>
       `;
       this.utilityContainer.appendChild(row);
+    }
+
+    // Update Phase 4 Kingdom & Tech Tree Panel
+    const k = snapshot.kingdom;
+    this.kingdomStockpileEl.innerHTML = `
+      <div><div style="color:#9aa1b5;font-size:10px">🪵 ไม้</div><strong style="color:#f59e0b">${k.wood}</strong></div>
+      <div><div style="color:#9aa1b5;font-size:10px">🪨 หิน</div><strong style="color:#cbd5e1">${k.stone}</strong></div>
+      <div><div style="color:#9aa1b5;font-size:10px">👥 ผู้ติดตาม</div><strong style="color:#8ef6ff">${k.population}/${k.maxPopulation}</strong></div>
+      <div><div style="color:#9aa1b5;font-size:10px">👑 เจริญ</div><strong style="color:#e0a945">${k.prosperity}</strong></div>
+    `;
+
+    if (k.activeSite) {
+      this.kingdomActiveSiteEl.innerHTML = `
+        <div style="background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.4);border-radius:5px;padding:5px 8px;font-size:11px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:3px;color:#fcd34d;font-weight:700">
+            <span>🔨 กำลังก่อสร้าง: ${k.activeSite.icon} ${k.activeSite.name}</span>
+            <span>${k.activeSite.percent}%</span>
+          </div>
+          <div class="bar-track" style="height:6px">
+            <div class="bar-fill" style="width:${k.activeSite.percent}%;background:#f59e0b"></div>
+          </div>
+        </div>
+      `;
+    } else {
+      this.kingdomActiveSiteEl.innerHTML = `
+        <div style="font-size:10.5px;color:#9aa1b5;padding:2px 0">
+          💡 บอทและผู้ติดตามจะตัดไม้/สกัดหินและสร้างสิ่งปลูกสร้างที่ปลดล็อกแล้วโดยอัตโนมัติ
+        </div>
+      `;
+    }
+
+    this.kingdomTechListEl.innerHTML = '';
+    for (const item of k.buildingsList) {
+      const b = item.config;
+      const div = document.createElement('div');
+      div.className = `tech-item ${item.unlocked ? 'unlocked' : ''}`;
+      const statusBadge =
+        item.count >= b.maxCount
+          ? `<span style="color:#52b788;font-weight:700">ครบ ${item.count}/${b.maxCount}</span>`
+          : item.unlocked
+          ? `<span style="color:#e0a945">${item.count}/${b.maxCount} (🪵${b.woodCost} 🪨${b.stoneCost})</span>`
+          : `<span style="color:#6c738a">🔒 INT ${b.requiredInt} • ปัญญา ${b.requiredLore}</span>`;
+
+      div.innerHTML = `
+        <div>
+          <div style="font-weight:700;color:${item.unlocked ? '#f2f4fa' : '#7c8499'}">
+            ${b.icon} ${b.name}
+          </div>
+          <div style="font-size:9.5px;color:#8c95aa">${b.description}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap;margin-left:6px">
+          ${statusBadge}
+        </div>
+      `;
+      this.kingdomTechListEl.appendChild(div);
     }
   }
 
@@ -1211,8 +1440,7 @@ export class HudOverlay {
 
   public updateTileInspector(tile?: TileData): void {
     if (!tile) {
-      this.tileInspectorEl.innerHTML =
-        'ชี้บนแผนที่เพื่อตรวจสอบไบโอมและทรัพยากร';
+      this.tileInspectorEl.innerHTML = 'ชี้บนแผนที่เพื่อตรวจสอบไบโอมและทรัพยากร';
       return;
     }
 
@@ -1226,23 +1454,36 @@ export class HudOverlay {
           resHtml = '🏮 <strong>ต้นหลิวโคมเรืองแสง:</strong> ร่มเงาพักผ่อนยามค่ำคืน';
           break;
         case 'tree':
-          resHtml = '🌲 <strong>ต้นไม้โบราณ:</strong> ที่พักพิงฟื้นฟูพลังงาน';
+          resHtml = '🌲 <strong>ต้นไม้โบราณ:</strong> แหล่งตัดไม้และร่มเงาพักผ่อน';
           break;
         case 'crimson_canopy':
-          resHtml = '🍄 <strong>พุ่มฉัตรสีชาด:</strong> พืชพรรณลึกลับแห่งเกาะหมอก';
+          resHtml = '🍄 <strong>พุ่มฉัตรสีชาด:</strong> พืชพรรณลึกลับและแหล่งไม้';
           break;
         case 'hut':
+          resHtml = '🏡 <strong>บ้านไม้ซุงโครงหิน:</strong> ที่พักอาศัยชั้นดีของหมู่บ้าน';
+          break;
         case 'round_hut':
-          resHtml = '🏠 <strong>กระท่อมไม้:</strong> ที่พักพิงอบอุ่นของหมู่บ้าน';
+          resHtml = '🛖 <strong>กระท่อมไม้หลังคามุงจาก:</strong> บ้านพักอบอุ่นของชาวบ้าน';
+          break;
+        case 'farm_plot':
+          resHtml = tile.resource.hasBerry
+            ? '🌾 <strong>แปลงเกษตรกรรม:</strong> พืชผลสุกพร้อมเก็บเกี่ยว!'
+            : '🌱 <strong>แปลงเกษตรกรรม:</strong> กำลังเติบโตงอกงาม';
+          break;
+        case 'stone_smithy':
+          resHtml = '⚒️ <strong>โรงตีเหล็กและเตาหลอม:</strong> ศูนย์กลางช่างฝีมือแห่งอาณาจักร';
+          break;
+        case 'construction_site':
+          resHtml = '🔨 <strong>เขตก่อสร้าง:</strong> อยู่ระหว่างการตอกค้อนสร้างอาคาร';
           break;
         case 'watchtower':
           resHtml = '🗼 <strong>หอคอยเฝ้าระวัง:</strong> ส่องสว่างคอยเตือนภัย';
           break;
         case 'crystal':
-          resHtml = '💎 <strong>ผลึกเรืองแสง:</strong> แหล่งพลังงานเวทมนตร์โบราณ';
+          resHtml = '💎 <strong>ผลึกเรืองแสง:</strong> แหล่งแร่หินและพลังงานเวทมนตร์';
           break;
         case 'mountain_rock':
-          resHtml = '⛰️ <strong>หินผารูนโบราณ:</strong> สิ่งกีดขวางที่พระเจ้าเสกขึ้น';
+          resHtml = '⛰️ <strong>โขดหินผารูน:</strong> แหล่งสกัดหินชั้นดีของอาณาจักร';
           break;
         case 'blessing_shrine':
           resHtml = '🌟 <strong>แท่นผลึกดารา:</strong> รอให้ตัวเอกเดินมารับพรศักดิ์สิทธิ์';

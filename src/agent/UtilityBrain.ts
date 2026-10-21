@@ -10,10 +10,13 @@ export interface BrainContext {
   isNight: boolean;
   isSnowing: boolean;
   isDangerNear: boolean;
+  isInfant: boolean;
   exploreTraitBonus: number;
   hasRipeBerryOnIsland: boolean;
   hasTreeOnIsland: boolean;
   hasBlessingShrine: boolean;
+  canBuildKingdom: boolean;
+  hasActiveConstruction: boolean;
 }
 
 export class UtilityBrain {
@@ -24,8 +27,15 @@ export class UtilityBrain {
   }
 
   public evaluate(ctx: BrainContext): { bestAction: ActionId; scores: UtilityScoreItem[] } {
-    const { eat_berry, sleep_tree, warm_campfire, seek_blessing, explore_island } =
-      this.config.actions;
+    const {
+      eat_berry,
+      sleep_tree,
+      warm_campfire,
+      seek_blessing,
+      build_kingdom,
+      gather_resources,
+      explore_island,
+    } = this.config.actions;
 
     // 1. Eat Berry Utility
     let eatScore = 0;
@@ -61,15 +71,15 @@ export class UtilityBrain {
     sleepScore = Math.min(1, Math.max(0, sleepScore));
 
     // 3. Warm by Campfire (Critical during Snowstorms or when fleeing Danger!)
-    let fireScore = warm_campfire ? (ctx.isNight ? warm_campfire.baseNightScore : 0.24) : 0.24;
+    let fireScore = warm_campfire ? (ctx.isNight ? warm_campfire.baseNightScore : 0.22) : 0.22;
     if (ctx.isSnowing) {
       fireScore = 0.94;
     } else if (ctx.isDangerNear) {
       fireScore = 0.96;
-    } else if (ctx.energy < 78 && ctx.energy > 42 && ctx.hunger > 50) {
-      fireScore += 0.16;
+    } else if (ctx.energy < 74 && ctx.energy > 42 && ctx.hunger > 50) {
+      fireScore += 0.14;
     }
-    if (ctx.currentAction === 'warm_campfire' && ctx.energy < 90 && ctx.hunger > 35) {
+    if (ctx.currentAction === 'warm_campfire' && ctx.energy < 88 && ctx.hunger > 35) {
       fireScore += warm_campfire?.commitmentBonus ?? 0.2;
     }
     fireScore = Math.min(0.97, Math.max(0.12, fireScore));
@@ -80,7 +90,30 @@ export class UtilityBrain {
       blessingScore = seek_blessing?.baseScore ?? 0.92;
     }
 
-    // 5. Explore Island Utility
+    // 5. Phase 4: Build Kingdom Utility
+    let buildScore = 0;
+    if (!ctx.isInfant && ctx.canBuildKingdom && ctx.hunger > 38 && ctx.energy > 35 && !ctx.isSnowing) {
+      buildScore = build_kingdom?.baseScore ?? 0.78;
+      if (ctx.hasActiveConstruction) {
+        buildScore += 0.08;
+      }
+      if (ctx.currentAction === 'build_kingdom') {
+        buildScore += build_kingdom?.commitmentBonus ?? 0.18;
+      }
+    }
+    buildScore = Math.min(0.95, Math.max(0, buildScore));
+
+    // 6. Phase 4: Gather Resources (Wood & Stone) Utility
+    let gatherScore = 0;
+    if (!ctx.isInfant && !ctx.canBuildKingdom && ctx.hunger > 42 && ctx.energy > 40 && !ctx.isSnowing) {
+      gatherScore = gather_resources?.baseScore ?? 0.62;
+      if (ctx.currentAction === 'gather_resources') {
+        gatherScore += gather_resources?.commitmentBonus ?? 0.15;
+      }
+    }
+    gatherScore = Math.min(0.88, Math.max(0, gatherScore));
+
+    // 7. Explore Island Utility
     const wellBeingFactor =
       (ctx.hunger / ctx.maxHunger) * 0.5 + (ctx.energy / ctx.maxEnergy) * 0.5;
     let exploreScore =
@@ -90,6 +123,8 @@ export class UtilityBrain {
     const scores: UtilityScoreItem[] = [
       { id: 'eat_berry', label: eat_berry.label, score: eatScore },
       { id: 'sleep_tree', label: sleep_tree.label, score: sleepScore },
+      { id: 'build_kingdom', label: build_kingdom.label, score: buildScore },
+      { id: 'gather_resources', label: gather_resources.label, score: gatherScore },
       { id: 'warm_campfire', label: warm_campfire.label, score: fireScore },
       { id: 'seek_blessing', label: seek_blessing.label, score: blessingScore },
       { id: 'explore_island', label: explore_island.label, score: exploreScore },

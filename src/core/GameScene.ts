@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { HeroAgent } from '../agent/HeroAgent';
+import { KingdomManager } from '../kingdom';
 import { HudOverlay } from '../ui/HudOverlay';
 import { IslandWorld } from '../world/IslandWorld';
 import { generateAllPixelTextures } from './PixelTextures';
@@ -7,6 +8,8 @@ import { bakeAllHighResSpriteSheets } from './SpriteSheetProcessor';
 import { TimeManager } from './TimeManager';
 import {
   AgentConfig,
+  BuildingConfig,
+  BuildingsData,
   GodToolId,
   TraitConfig,
   WeatherConfig,
@@ -19,9 +22,11 @@ export class GameScene extends Phaser.Scene {
   private agentConfig!: AgentConfig;
   private traitsList: TraitConfig[] = [];
   private weatherList: WeatherConfig[] = [];
+  private buildingsList: BuildingConfig[] = [];
 
   private timeManager!: TimeManager;
   private world!: IslandWorld;
+  private kingdom!: KingdomManager;
   private hero!: HeroAgent;
   private hud!: HudOverlay;
 
@@ -52,12 +57,14 @@ export class GameScene extends Phaser.Scene {
     this.load.json('agent_config', 'assets/data/agent_config.json');
     this.load.json('traits_data', 'assets/data/traits.json');
     this.load.json('weather_data', 'assets/data/weather_events.json');
+    this.load.json('buildings_data', 'assets/data/buildings.json');
 
     // Load Smooth Hand-Painted 2.5D Sprite Sheets (Non-Pixel Art, matching Reference)
     this.load.image('sheet_buildings', 'assets/sprites/hd_buildings_sheet.jpg');
     this.load.image('sheet_flora', 'assets/sprites/hd_flora_sheet.jpg');
     this.load.image('sheet_characters', 'assets/sprites/hd_characters_sheet.jpg');
     this.load.image('sheet_phase3', 'assets/sprites/hd_phase3_sheet.jpg');
+    this.load.image('sheet_kingdom', 'assets/sprites/hd_kingdom_sheet.jpg');
   }
 
   public create(): void {
@@ -67,6 +74,8 @@ export class GameScene extends Phaser.Scene {
     this.traitsList = rawTraits?.traits ?? [];
     const rawWeather = this.cache.json.get('weather_data') as { weatherEvents: WeatherConfig[] };
     this.weatherList = rawWeather?.weatherEvents ?? [];
+    const rawBuildings = this.cache.json.get('buildings_data') as BuildingsData;
+    this.buildingsList = rawBuildings?.buildings ?? [];
 
     generateAllPixelTextures(this);
     bakeAllHighResSpriteSheets(this);
@@ -74,7 +83,27 @@ export class GameScene extends Phaser.Scene {
     this.timeManager = new TimeManager(this.agentConfig.secondsPerYear);
     this.world = new IslandWorld(this, this.worldConfig, this.weatherList[0]);
 
+    this.kingdom = new KingdomManager(
+      this,
+      this.world,
+      this.buildingsList,
+      (text, type) => {
+        if (!this.hud || !this.hero) return;
+        const clock = this.timeManager.getClockTime();
+        const snap = this.hero.getStatusSnapshot();
+        this.hud.addChronicle({
+          year: snap.age,
+          day: snap.dayOfYear,
+          timeStr: clock.formatted,
+          lifeStageBadge: snap.lifeStage.badge,
+          text,
+          type,
+        });
+      }
+    );
+
     this.hud = new HudOverlay(
+      this,
       {
         onSpeedChange: (speed) => this.timeManager.setSpeed(speed),
         onToggleFollow: () => {
@@ -90,14 +119,19 @@ export class GameScene extends Phaser.Scene {
           this.hud.clearChronicles();
           this.timeManager.reset();
           this.world.regenerate();
+          this.kingdom.resetForNewWorld();
           this.hero.respawnOnIsland(false);
           this.followHero = true;
           this.hud.setFollowState(true);
+          this.cameras.main.setZoom(1.85);
           this.centerCameraOnHero();
         },
         onCenterHero: () => {
           this.followHero = true;
           this.hud.setFollowState(true);
+          if (this.cameras.main.zoom < 1.2) {
+            this.cameras.main.zoomTo(1.85, 350, 'Sine.easeOut');
+          }
           this.centerCameraOnHero();
         },
         onCenterVillage: () => {
@@ -106,6 +140,19 @@ export class GameScene extends Phaser.Scene {
           const cx = (this.worldConfig.mapWidth * this.worldConfig.tileSize) / 2;
           const cy = (this.worldConfig.mapHeight * this.worldConfig.tileSize) / 2;
           this.cameras.main.pan(cx, cy, 450, 'Sine.easeInOut');
+        },
+        onZoomDelta: (delta: number) => {
+          const cam = this.cameras.main;
+          const nextZoom = Phaser.Math.Clamp(cam.zoom + delta, 0.42, 4.5);
+          cam.zoomTo(nextZoom, 220, 'Sine.easeOut');
+        },
+        onZoomFullWorld: () => {
+          this.followHero = false;
+          this.hud.setFollowState(false);
+          const cx = (this.worldConfig.mapWidth * this.worldConfig.tileSize) / 2;
+          const cy = (this.worldConfig.mapHeight * this.worldConfig.tileSize) / 2;
+          this.cameras.main.pan(cx, cy, 450, 'Sine.easeInOut');
+          this.cameras.main.zoomTo(0.48, 450, 'Sine.easeInOut');
         },
         onApplyHeroCustomization: (custom) => {
           this.timeManager.reset();
@@ -139,6 +186,11 @@ export class GameScene extends Phaser.Scene {
           this.hero.grantDivineInspiration();
           this.refreshHud();
         },
+        onTriggerLegacyHeir: () => {
+          this.timeManager.reset();
+          this.hero.triggerNextGenerationHeir();
+          this.refreshHud();
+        },
       },
       this.traitsList,
       this.weatherList
@@ -147,6 +199,7 @@ export class GameScene extends Phaser.Scene {
     this.hero = new HeroAgent(
       this,
       this.world,
+      this.kingdom,
       this.agentConfig,
       this.traitsList,
       (entry) => {
@@ -155,7 +208,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.tileCursor = this.add.image(-100, -100, 'tile_cursor');
-    this.tileCursor.setDisplaySize(18, 18);
+    this.tileCursor.setDisplaySize(20, 20);
     this.tileCursor.setDepth(3500);
     this.tileCursor.setAlpha(0.85);
 
@@ -168,8 +221,8 @@ export class GameScene extends Phaser.Scene {
     const mapPxH = this.worldConfig.mapHeight * this.worldConfig.tileSize;
 
     const cam = this.cameras.main;
-    cam.setBounds(-160, -160, mapPxW + 320, mapPxH + 320);
-    cam.setZoom(2.35);
+    cam.setBounds(-400, -400, mapPxW + 800, mapPxH + 800);
+    cam.setZoom(1.85);
     this.centerCameraOnHero();
 
     if (this.input.keyboard) {
@@ -244,8 +297,8 @@ export class GameScene extends Phaser.Scene {
         _deltaX: number,
         deltaY: number
       ) => {
-        const zoomStep = deltaY > 0 ? -0.25 : 0.25;
-        const nextZoom = Phaser.Math.Clamp(cam.zoom + zoomStep, 1.0, 5.0);
+        const factor = deltaY > 0 ? -0.22 : 0.22;
+        const nextZoom = Phaser.Math.Clamp(cam.zoom + factor, 0.42, 4.5);
         cam.setZoom(nextZoom);
       }
     );
@@ -266,7 +319,7 @@ export class GameScene extends Phaser.Scene {
             day: snap.dayOfYear,
             timeStr: clock.formatted,
             lifeStageBadge: snap.lifeStage.badge,
-            text: `⛰️ พระเจ้าเสกโขดหินผารูนโบราณกั้นทางที่พิกัด (${tx}, ${ty})`,
+            text: `⛰️ พระเจ้าเสกโขดหินผารูนโบราณที่พิกัด (${tx}, ${ty})`,
             type: 'info',
           });
         }
@@ -278,7 +331,7 @@ export class GameScene extends Phaser.Scene {
             day: snap.dayOfYear,
             timeStr: clock.formatted,
             lifeStageBadge: snap.lifeStage.badge,
-            text: `🌊 พระเจ้าเนรมิตลำธารเรืองแสงที่พิกัด (${tx}, ${ty})`,
+            text: `🌊 พระเจ้าเนรมิตลำธารที่พิกัด (${tx}, ${ty})`,
             type: 'info',
           });
         }
@@ -347,6 +400,7 @@ export class GameScene extends Phaser.Scene {
     const clock = this.timeManager.getClockTime();
 
     this.world.update(simDeltaSec, deltaMs);
+    this.kingdom.update(simDeltaSec, this.hero.int, Math.floor(this.hero.loreExp));
     this.hero.update(
       simDeltaSec,
       this.timeManager.getElapsedYears(),
@@ -366,7 +420,7 @@ export class GameScene extends Phaser.Scene {
 
   private handleCameraMovement(deltaMs: number): void {
     const cam = this.cameras.main;
-    const panSpeed = (0.35 * deltaMs) / cam.zoom;
+    const panSpeed = (0.42 * deltaMs) / cam.zoom;
     let manualPan = false;
 
     if (this.cursors?.left.isDown || this.wasdKeys?.A.isDown) {

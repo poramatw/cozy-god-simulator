@@ -1,15 +1,15 @@
 {
-  "mapWidth": 64,
-  "mapHeight": 64,
-  "tileSize": 16,
-  "noiseScale": 0.065,
-  "detailScale": 0.16,
-  "berryRegrowSeconds": 22,
+  "mapWidth": 128,
+  "mapHeight": 128,
+  "tileSize": 20,
+  "noiseScale": 0.038,
+  "detailScale": 0.11,
+  "berryRegrowSeconds": 20,
   "biomes": [
     {
       "id": "deep_water",
-      "name": "ทะเลลึก (Deep Water)",
-      "maxElevation": 0.24,
+      "name": "ทะเลลึก (Deep Ocean)",
+      "maxElevation": 0.22,
       "walkable": false,
       "speedMultiplier": 0.0,
       "treeChance": 0.0,
@@ -17,39 +17,39 @@
     },
     {
       "id": "shallow_water",
-      "name": "น้ำตื้นชายฝั่ง (Shallow Water)",
-      "maxElevation": 0.34,
+      "name": "ธารน้ำเรืองแสง (Mystic Stream)",
+      "maxElevation": 0.32,
       "walkable": true,
-      "speedMultiplier": 0.55,
+      "speedMultiplier": 0.6,
       "treeChance": 0.0,
       "berryChance": 0.0
     },
     {
       "id": "sand",
-      "name": "หาดทรายอบอุ่น (Warm Beach)",
-      "maxElevation": 0.43,
+      "name": "ชายฝั่งและลานหิน (Shore & Foothills)",
+      "maxElevation": 0.41,
       "walkable": true,
-      "speedMultiplier": 0.85,
-      "treeChance": 0.015,
-      "berryChance": 0.01
+      "speedMultiplier": 0.9,
+      "treeChance": 0.012,
+      "berryChance": 0.008
     },
     {
       "id": "grass",
-      "name": "ทุ่งหญ้าเขียวขจี (Cozy Meadow)",
-      "maxElevation": 0.70,
+      "name": "ทุ่งหญ้าอุดมสมบูรณ์ (Fertile Plains)",
+      "maxElevation": 0.68,
       "walkable": true,
       "speedMultiplier": 1.0,
-      "treeChance": 0.06,
-      "berryChance": 0.055
+      "treeChance": 0.045,
+      "berryChance": 0.038
     },
     {
       "id": "forest",
-      "name": "พงไพรอุดมสมบูรณ์ (Lush Forest)",
+      "name": "พงไพรโบราณ (Ancient Woodland)",
       "maxElevation": 1.0,
       "walkable": true,
       "speedMultiplier": 0.88,
-      "treeChance": 0.22,
-      "berryChance": 0.085
+      "treeChance": 0.16,
+      "berryChance": 0.055
     }
   ]
 }

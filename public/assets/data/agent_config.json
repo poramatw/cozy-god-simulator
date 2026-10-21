@@ -3,8 +3,8 @@
   "defaultClanName": "แห่งโมริมาร์ (of the Morimar)",
   "initialAge": 1,
   "maxLifespanAge": 75,
-  "secondsPerYear": 35,
-  "baseMoveSpeedPx": 40,
+  "secondsPerYear": 32,
+  "baseMoveSpeedPx": 52,
   "defaultStats": {
     "str": 5,
     "int": 5,
@@ -15,115 +15,115 @@
     {
       "id": "infant",
       "name": "วัยทารก (Infant)",
-      "badge": "👶 ทารก",
+      "badge": "👶 ทารก (0-4 ปี)",
       "minAge": 0,
       "maxAge": 4,
-      "scale": 0.72,
-      "speedMultiplier": 0.75,
-      "energyDecayMultiplier": 1.2,
-      "hungerDecayMultiplier": 1.15,
-      "description": "วัยเตาะแตะที่เรียนรู้โลกกว้างใกล้กองไฟ"
+      "scale": 0.66,
+      "speedMultiplier": 0.78,
+      "energyDecayMultiplier": 1.15,
+      "hungerDecayMultiplier": 1.12,
+      "description": "วัยเตาะแตะตัวน้อยในชุดผ้าคลุมเด็กอ่อน เรียนรู้โลกใกล้กองไฟ"
     },
     {
       "id": "child",
       "name": "วัยเด็ก (Child)",
-      "badge": "🧒 วัยเด็ก",
+      "badge": "🧒 วัยเด็ก (5-12 ปี)",
       "minAge": 5,
       "maxAge": 12,
-      "scale": 0.85,
-      "speedMultiplier": 0.95,
-      "energyDecayMultiplier": 1.05,
+      "scale": 0.80,
+      "speedMultiplier": 0.96,
+      "energyDecayMultiplier": 1.02,
       "hungerDecayMultiplier": 1.05,
-      "description": "วัยช่างสงสัยที่ชอบวิ่งเล่นสำรวจพงไพร"
+      "description": "เด็กน้อยช่างสงสัยที่ชอบวิ่งเล่นและเก็บฟืนช่วยหมู่บ้าน"
     },
     {
       "id": "teen",
       "name": "วัยรุ่น (Youth)",
-      "badge": "🧑 วัยรุ่น",
+      "badge": "🧑 วัยรุ่น (13-19 ปี)",
       "minAge": 13,
       "maxAge": 19,
-      "scale": 0.95,
+      "scale": 0.92,
       "speedMultiplier": 1.1,
       "energyDecayMultiplier": 0.95,
-      "hungerDecayMultiplier": 1.1,
-      "description": "เปี่ยมด้วยพละกำลังและความฝันในการผจญภัย"
+      "hungerDecayMultiplier": 1.05,
+      "description": "นักสำรวจหนุ่มสาวถือตะเกียงไฟ เริ่มเรียนรู้การก่อสร้าง"
     },
     {
       "id": "adult",
       "name": "วัยผู้ใหญ่ (Adult)",
-      "badge": "⚔️ ผู้ใหญ่",
+      "badge": "⚔️ ผู้ใหญ่ (20-49 ปี)",
       "minAge": 20,
       "maxAge": 49,
-      "scale": 1.0,
-      "speedMultiplier": 1.08,
-      "energyDecayMultiplier": 0.9,
-      "hungerDecayMultiplier": 0.95,
-      "description": "ช่วงวัยที่แข็งแกร่งและเชี่ยวชาญการเอาตัวรอดที่สุด"
+      "scale": 1.04,
+      "speedMultiplier": 1.12,
+      "energyDecayMultiplier": 0.88,
+      "hungerDecayMultiplier": 0.92,
+      "description": "ผู้นำหมู่บ้านเต็มตัวในชุดเกราะหนังและผ้าคลุม สร้างอาณาจักรได้อย่างรวดเร็ว"
     },
     {
       "id": "elder",
       "name": "วัยชรา (Elder)",
-      "badge": "🧓 วัยชรา",
+      "badge": "🧓 วัยชรา (50+ ปี)",
       "minAge": 50,
       "maxAge": 120,
-      "scale": 0.94,
-      "speedMultiplier": 0.78,
-      "energyDecayMultiplier": 1.25,
+      "scale": 0.98,
+      "speedMultiplier": 0.82,
+      "energyDecayMultiplier": 1.2,
       "hungerDecayMultiplier": 0.85,
-      "description": "ผมสีเงินเปี่ยมด้วยภูมิปัญญาแห่งเกาะโบราณ"
+      "description": "ปราชญ์อาวุโสผมสีเงินถือไม้เท้า เปี่ยมด้วยภูมิปัญญาพร้อมส่งต่อมรดกสู่รุ่นลูก"
     }
   ],
   "needs": {
     "hunger": {
-      "initial": 86,
+      "initial": 88,
       "max": 100,
-      "decayPerSec": 1.35,
-      "starveDamagePerSec": 1.6
+      "decayPerSec": 1.2,
+      "starveDamagePerSec": 1.5
     },
     "energy": {
-      "initial": 90,
+      "initial": 92,
       "max": 100,
-      "decayPerSec": 0.95,
-      "moveExtraDecayPerSec": 0.3,
-      "exhaustDamagePerSec": 0.75
+      "decayPerSec": 0.85,
+      "moveExtraDecayPerSec": 0.25,
+      "exhaustDamagePerSec": 0.7
     },
     "health": {
       "initial": 100,
       "max": 100,
-      "regenPerSecWhenWell": 1.0,
-      "wellThresholdHunger": 60,
+      "regenPerSecWhenWell": 1.2,
+      "wellThresholdHunger": 55,
       "wellThresholdEnergy": 45
     }
   },
   "actions": {
     "eat_berry": {
       "id": "eat_berry",
-      "label": "เก็บเบอร์รี่ป่า",
+      "label": "เก็บอาหาร/ผลผลิต",
       "icon": "icon_berry",
-      "hungerRestore": 38,
-      "healthRestore": 5,
-      "durationSec": 1.6,
-      "urgencyThreshold": 68,
+      "hungerRestore": 40,
+      "healthRestore": 6,
+      "durationSec": 1.5,
+      "urgencyThreshold": 65,
       "commitmentBonus": 0.25
     },
     "sleep_tree": {
       "id": "sleep_tree",
       "label": "พักผ่อนฟื้นพลัง",
       "icon": "icon_zzz",
-      "energyRestorePerSec": 15.0,
-      "healthRestorePerSec": 1.8,
+      "energyRestorePerSec": 16.0,
+      "healthRestorePerSec": 2.0,
       "wakeUpThreshold": 96,
-      "urgencyThreshold": 50,
+      "urgencyThreshold": 48,
       "commitmentBonus": 0.35
     },
     "warm_campfire": {
       "id": "warm_campfire",
-      "label": "ผิงไฟและขบคิด",
+      "label": "ผิงไฟและวิจัย",
       "icon": "icon_fire",
-      "energyRestorePerSec": 10.5,
+      "energyRestorePerSec": 11.0,
       "healthRestorePerSec": 2.8,
-      "durationSec": 4.0,
-      "baseNightScore": 0.58,
+      "durationSec": 3.5,
+      "baseNightScore": 0.56,
       "commitmentBonus": 0.25
     },
     "seek_blessing": {
@@ -131,15 +131,31 @@
       "label": "รับพรผลึกดารา",
       "icon": "icon_compass",
       "durationSec": 1.8,
-      "baseScore": 0.92
+      "baseScore": 0.94
+    },
+    "build_kingdom": {
+      "id": "build_kingdom",
+      "label": "ก่อสร้างพัฒนาเมือง",
+      "icon": "icon_hammer",
+      "durationSec": 3.5,
+      "baseScore": 0.78,
+      "commitmentBonus": 0.3
+    },
+    "gather_resources": {
+      "id": "gather_resources",
+      "label": "ตัดไม้และสกัดหิน",
+      "icon": "icon_axe",
+      "durationSec": 2.2,
+      "baseScore": 0.58,
+      "commitmentBonus": 0.2
     },
     "explore_island": {
       "id": "explore_island",
-      "label": "ออกสำรวจพงไพร",
+      "label": "ออกสำรวจทวีป",
       "icon": "icon_compass",
-      "baseScore": 0.3,
-      "pauseDurationSec": 2.0,
-      "maxWanderRadiusTiles": 15
+      "baseScore": 0.32,
+      "pauseDurationSec": 1.8,
+      "maxWanderRadiusTiles": 22
     }
   }
 }
