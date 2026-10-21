@@ -17,6 +17,7 @@ export interface BrainContext {
   hasBlessingShrine: boolean;
   canBuildKingdom: boolean;
   hasActiveConstruction: boolean;
+  deepModifiers?: Record<ActionId, number>;
 }
 
 export class UtilityBrain {
@@ -37,11 +38,21 @@ export class UtilityBrain {
       explore_island,
     } = this.config.actions;
 
+    const dm = ctx.deepModifiers ?? {
+      eat_berry: 0,
+      sleep_tree: 0,
+      warm_campfire: 0,
+      seek_blessing: 0,
+      build_kingdom: 0,
+      gather_resources: 0,
+      explore_island: 0,
+    };
+
     // 1. Eat Berry Utility
     let eatScore = 0;
     if (ctx.hasRipeBerryOnIsland) {
       const hungerDeficit = Math.max(0, 1 - ctx.hunger / ctx.maxHunger);
-      eatScore = Math.pow(hungerDeficit, 1.55) * 1.18;
+      eatScore = Math.pow(hungerDeficit, 1.55) * 1.18 + dm.eat_berry;
       if (ctx.hunger <= eat_berry.urgencyThreshold) {
         eatScore += 0.18;
       }
@@ -55,7 +66,7 @@ export class UtilityBrain {
     let sleepScore = 0;
     if (ctx.hasTreeOnIsland) {
       const energyDeficit = Math.max(0, 1 - ctx.energy / ctx.maxEnergy);
-      sleepScore = Math.pow(energyDeficit, 1.65) * 1.15;
+      sleepScore = Math.pow(energyDeficit, 1.65) * 1.15 + dm.sleep_tree;
       if (ctx.energy <= sleep_tree.urgencyThreshold) {
         sleepScore += 0.22;
       }
@@ -70,30 +81,33 @@ export class UtilityBrain {
     }
     sleepScore = Math.min(1, Math.max(0, sleepScore));
 
-    // 3. Warm by Campfire (Critical during Snowstorms or when fleeing Danger!)
-    let fireScore = warm_campfire ? (ctx.isNight ? warm_campfire.baseNightScore : 0.22) : 0.22;
+    // 3. Warm by Campfire (Critical during Snowstorms, Blizzards, or when fleeing Danger!)
+    let fireScore =
+      (warm_campfire ? (ctx.isNight ? warm_campfire.baseNightScore : 0.22) : 0.22) +
+      dm.warm_campfire;
     if (ctx.isSnowing) {
-      fireScore = 0.94;
+      fireScore = Math.max(fireScore, 0.94);
     } else if (ctx.isDangerNear) {
-      fireScore = 0.96;
+      fireScore = Math.max(fireScore, 0.96);
     } else if (ctx.energy < 74 && ctx.energy > 42 && ctx.hunger > 50) {
-      fireScore += 0.14;
+      fireScore += 0.12;
     }
     if (ctx.currentAction === 'warm_campfire' && ctx.energy < 88 && ctx.hunger > 35) {
       fireScore += warm_campfire?.commitmentBonus ?? 0.2;
     }
-    fireScore = Math.min(0.97, Math.max(0.12, fireScore));
+    fireScore = Math.min(0.98, Math.max(0.12, fireScore));
 
     // 4. Seek Divine Blessing Shrine (Phase 3 God's Hand)
     let blessingScore = 0;
     if (ctx.hasBlessingShrine && ctx.hunger > 25 && !ctx.isDangerNear) {
-      blessingScore = seek_blessing?.baseScore ?? 0.92;
+      blessingScore = (seek_blessing?.baseScore ?? 0.92) + dm.seek_blessing;
     }
+    blessingScore = Math.min(0.98, Math.max(0, blessingScore));
 
     // 5. Phase 4: Build Kingdom Utility
     let buildScore = 0;
     if (!ctx.isInfant && ctx.canBuildKingdom && ctx.hunger > 38 && ctx.energy > 35 && !ctx.isSnowing) {
-      buildScore = build_kingdom?.baseScore ?? 0.78;
+      buildScore = (build_kingdom?.baseScore ?? 0.78) + dm.build_kingdom;
       if (ctx.hasActiveConstruction) {
         buildScore += 0.08;
       }
@@ -106,7 +120,7 @@ export class UtilityBrain {
     // 6. Phase 4: Gather Resources (Wood & Stone) Utility
     let gatherScore = 0;
     if (!ctx.isInfant && !ctx.canBuildKingdom && ctx.hunger > 42 && ctx.energy > 40 && !ctx.isSnowing) {
-      gatherScore = gather_resources?.baseScore ?? 0.62;
+      gatherScore = (gather_resources?.baseScore ?? 0.62) + dm.gather_resources;
       if (ctx.currentAction === 'gather_resources') {
         gatherScore += gather_resources?.commitmentBonus ?? 0.15;
       }
@@ -117,8 +131,11 @@ export class UtilityBrain {
     const wellBeingFactor =
       (ctx.hunger / ctx.maxHunger) * 0.5 + (ctx.energy / ctx.maxEnergy) * 0.5;
     let exploreScore =
-      explore_island.baseScore + wellBeingFactor * 0.24 + ctx.exploreTraitBonus;
-    exploreScore = Math.min(1, Math.max(0.15, exploreScore));
+      explore_island.baseScore +
+      wellBeingFactor * 0.24 +
+      ctx.exploreTraitBonus +
+      dm.explore_island;
+    exploreScore = Math.min(0.95, Math.max(0.12, exploreScore));
 
     const scores: UtilityScoreItem[] = [
       { id: 'eat_berry', label: eat_berry.label, score: eatScore },

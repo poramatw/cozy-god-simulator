@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { DeepThoughtOutput, DisasterId } from '../agent/DeepCognitionEngine';
+import { SeasonMetadata } from '../world/SeasonAndDisasterSystem';
 
 export type BiomeId = 'deep_water' | 'shallow_water' | 'sand' | 'grass' | 'forest';
 
@@ -351,6 +353,9 @@ export interface HeroStatusSnapshot {
   generation: number;
   activeWeather: WeatherConfig;
   kingdom: KingdomSnapshot;
+  deepThought: DeepThoughtOutput;
+  seasonMeta: SeasonMetadata;
+  activeDisaster: DisasterId;
 }
 
 export interface ChronicleEntry {

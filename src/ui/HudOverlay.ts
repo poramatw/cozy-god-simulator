@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { DisasterId, SeasonId } from '../agent/DeepCognitionEngine';
 import { renderHeroPortraitToCanvas } from '../core/PixelTextures';
 import {
   ChronicleEntry,
@@ -24,6 +25,8 @@ export interface HudCallbacks {
   onZoomFullWorld: () => void;
   onApplyHeroCustomization: (custom: HeroCustomization) => void;
   onSelectWeather: (weatherId: WeatherId) => void;
+  onSelectSeason: (seasonId: SeasonId) => void;
+  onTriggerDisaster: (disasterId: DisasterId) => void;
   onSelectGodTool: (toolId: GodToolId) => void;
   onGrantDivineInspiration: () => void;
   onTriggerLegacyHeir: () => void;
@@ -94,6 +97,10 @@ export class HudOverlay {
 
   private utilitySectionEl!: HTMLElement;
   private utilityContainer!: HTMLElement;
+  private deepPhilosophyEl!: HTMLElement;
+  private deepMonologueEl!: HTMLElement;
+  private deepReasoningListEl!: HTMLElement;
+  private deepMemoriesListEl!: HTMLElement;
   private chronicleListEl!: HTMLElement;
 
   // Right Floating Kingdom & Inspector Panels (Phase 4)
@@ -829,7 +836,47 @@ export class HudOverlay {
     this.godHintEl.style.textAlign = 'center';
     this.godHintEl.textContent = 'คลิกเลือกพลังหัตถ์พระเจ้า แล้วคลิกบนแผนที่เพื่อเสกสิ่งกีดขวางหรือมอบพร';
 
-    godPanel.body.append(weatherRow, toolRow, this.godHintEl);
+    // Row 3: Seasons & Natural Disasters
+    const seasonDisasterRow = document.createElement('div');
+    seasonDisasterRow.className = 'god-toolbar-row';
+
+    const seasons: { id: SeasonId; label: string }[] = [
+      { id: 'spring', label: '🌸 ใบไม้ผลิ' },
+      { id: 'summer', label: '☀️ ฤดูร้อน' },
+      { id: 'autumn', label: '🍂 ใบไม้ร่วง' },
+      { id: 'winter', label: '❄️ ฤดูหนาว' },
+    ];
+    for (const s of seasons) {
+      const btn = document.createElement('button');
+      btn.className = 'ref-pill-btn';
+      btn.textContent = s.label;
+      btn.onclick = () => {
+        this.triggerJuice(btn);
+        this.callbacks.onSelectSeason(s.id);
+      };
+      seasonDisasterRow.appendChild(btn);
+    }
+
+    const disasters: { id: DisasterId; label: string }[] = [
+      { id: 'wildfire', label: '🔥 ไฟป่า' },
+      { id: 'blizzard', label: '🌨️ พายุหิมะคลั่ง' },
+      { id: 'meteor_shower', label: '☄️ ฝนดาวตก' },
+      { id: 'earthquake', label: '🌋 แผ่นดินไหว' },
+    ];
+    for (const d of disasters) {
+      const btn = document.createElement('button');
+      btn.className = 'ref-pill-btn';
+      btn.style.borderColor = 'rgba(255, 89, 100, 0.45)';
+      btn.style.color = '#ffb3b8';
+      btn.textContent = d.label;
+      btn.onclick = () => {
+        this.triggerJuice(btn);
+        this.callbacks.onTriggerDisaster(d.id);
+      };
+      seasonDisasterRow.appendChild(btn);
+    }
+
+    godPanel.body.append(weatherRow, seasonDisasterRow, toolRow, this.godHintEl);
     this.root.appendChild(this.godToolbar);
 
     // 4. Left Floating Column (Collapsible Hero Status + Collapsible Life Chronicle)
@@ -912,13 +959,48 @@ export class HudOverlay {
       this.utilitySectionEl
     );
 
+    // Collapsible Deep Thinking, Philosophy & Personal Lore Card
+    const deepPanel = this.createCollapsibleCard(
+      '🧘 ปรัชญาชีวิต ความคิดเชิงลึก & Lore (Deep Brain)',
+      false
+    );
+    this.deepPhilosophyEl = document.createElement('div');
+    this.deepPhilosophyEl.style.marginBottom = '6px';
+
+    this.deepMonologueEl = document.createElement('div');
+    this.deepMonologueEl.style.background = 'rgba(224, 169, 69, 0.12)';
+    this.deepMonologueEl.style.borderLeft = '3px solid #e0a945';
+    this.deepMonologueEl.style.borderRadius = '0 5px 5px 0';
+    this.deepMonologueEl.style.padding = '5px 8px';
+    this.deepMonologueEl.style.fontSize = '11px';
+    this.deepMonologueEl.style.fontStyle = 'italic';
+    this.deepMonologueEl.style.color = '#f8fafc';
+    this.deepMonologueEl.style.marginBottom = '6px';
+
+    this.deepReasoningListEl = document.createElement('div');
+    this.deepReasoningListEl.style.fontSize = '10.5px';
+    this.deepReasoningListEl.style.color = '#cbd5e1';
+    this.deepReasoningListEl.style.marginBottom = '6px';
+
+    this.deepMemoriesListEl = document.createElement('div');
+    this.deepMemoriesListEl.style.maxHeight = '105px';
+    this.deepMemoriesListEl.style.overflowY = 'auto';
+    this.deepMemoriesListEl.style.fontSize = '10.5px';
+
+    deepPanel.body.append(
+      this.deepPhilosophyEl,
+      this.deepMonologueEl,
+      this.deepReasoningListEl,
+      this.deepMemoriesListEl
+    );
+
     // Collapsible Chronicle Card
-    const chronPanel = this.createCollapsibleCard('📜 บันทึกช่วงชีวิต (Life Chronicle)', false);
+    const chronPanel = this.createCollapsibleCard('📜 บันทึกช่วงชีวิต (Life Chronicle)', true);
     this.chronicleListEl = document.createElement('div');
     this.chronicleListEl.className = 'chronicle-list';
     chronPanel.body.appendChild(this.chronicleListEl);
 
-    this.leftPanel.append(heroPanel.card, chronPanel.card);
+    this.leftPanel.append(heroPanel.card, deepPanel.card, chronPanel.card);
     this.root.appendChild(this.leftPanel);
 
     // 5. Right Floating Column: Phase 4 Kingdom & Tech Tree + Map Controls
@@ -1287,8 +1369,70 @@ export class HudOverlay {
     clockStr: string
   ): void {
     this.fpsEl.textContent = `${Math.round(fps)} fps • รุ่นที่ ${snapshot.generation}`;
-    this.clockPillEl.textContent = `Day ${dayCount}  ${clockStr}  ${snapshot.activeWeather.shortLabel}`;
+    const sMeta = snapshot.seasonMeta;
+    const disText =
+      snapshot.activeDisaster !== 'none' ? ` • ⚠️ ${snapshot.activeDisaster.toUpperCase()}` : '';
+    this.clockPillEl.textContent = `Day ${dayCount} • ${sMeta.icon} ${
+      sMeta.name.split(' ')[0]
+    } (${sMeta.temperatureC}°C) • ${clockStr} • ${snapshot.activeWeather.shortLabel}${disText}`;
     this.narrativeCaptionEl.textContent = snapshot.narrativeCaption;
+
+    // Update Deep Thinking, Philosophy & Personal Lore Panel
+    const dt = snapshot.deepThought;
+    if (dt) {
+      const phil = dt.dominantPhilosophy;
+      this.deepPhilosophyEl.innerHTML = `
+        <div style="font-size:11px;font-weight:700;color:#8ef6ff">${dt.ageRoleTitle}</div>
+        <div style="font-size:10px;color:#9aa1b5;margin-bottom:4px">${dt.ageBehaviorSummary}</div>
+        <div style="background:rgba(255,255,255,0.04);padding:4px 7px;border-radius:5px;font-size:10.5px">
+          <strong style="color:#e0a945">${phil.icon} ปรัชญาประจำใจ: ${phil.name.split(' ')[0]}</strong>
+          <div style="font-size:9.8px;color:#b8bfd1;margin-top:1px">"${phil.maxim}"</div>
+        </div>
+      `;
+      this.deepMonologueEl.textContent = `💭 ความคิดในใจ: ${dt.currentMonologue}`;
+
+      this.deepReasoningListEl.innerHTML =
+        `<div class="section-title">🔗 ลำดับการคิดวิเคราะห์ (Chain of Thought)</div>` +
+        dt.reasoningChain
+          .map(
+            (r) =>
+              `<div style="margin-bottom:2px;padding-left:4px;border-left:2px solid #47b5cf">${r}</div>`
+          )
+          .join('');
+
+      const memHtml = dt.recentMemories
+        .slice(0, 4)
+        .map(
+          (m) => `
+          <div style="background:rgba(255,255,255,0.03);padding:3px 6px;border-radius:4px;margin-bottom:3px">
+            <strong style="color:#fcd34d">📌 [อายุ ${m.age} ปี] ${m.title}</strong>
+            <div style="font-size:9.8px;color:#9aa1b5">${m.reflection}</div>
+          </div>
+        `
+        )
+        .join('');
+
+      const ancHtml =
+        dt.ancestralLegends.length > 0
+          ? `<div class="section-title">📖 คัมภีร์บรรพบุรุษ (Dynasty Lore)</div>` +
+            dt.ancestralLegends
+              .slice(0, 2)
+              .map(
+                (a) => `
+              <div style="background:rgba(142,246,255,0.08);padding:3px 6px;border-radius:4px;margin-bottom:3px">
+                <strong style="color:#8ef6ff">👑 รุ่นที่ ${a.generation}: ${a.heroName}</strong>
+                <div style="font-size:9.5px;color:#cbd5e1">${a.epitaph}</div>
+              </div>
+            `
+              )
+              .join('')
+          : '';
+
+      this.deepMemoriesListEl.innerHTML =
+        `<div class="section-title">🧠 ความทรงจำฝังใจ (Episodic Memory)</div>` +
+        (memHtml || '<div style="color:#6c738a">กำลังบันทึกความทรงจำแรกของชีวิต...</div>') +
+        ancHtml;
+    }
 
     // Sync HUD portrait strictly with the character's current life stage sprite!
     if (

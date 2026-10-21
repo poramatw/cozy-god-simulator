@@ -12,6 +12,8 @@ import {
 } from '../core/Types';
 import { KingdomManager } from '../kingdom';
 import { IslandWorld } from '../world/IslandWorld';
+import { SeasonAndDisasterSystem } from '../world/SeasonAndDisasterSystem';
+import { DeepCognitionEngine, DeepThoughtOutput } from './DeepCognitionEngine';
 import { findPathAStar, GridPoint } from './Pathfinder';
 import { UtilityBrain } from './UtilityBrain';
 
@@ -19,9 +21,11 @@ export class HeroAgent {
   private scene: Phaser.Scene;
   private world: IslandWorld;
   private kingdom: KingdomManager;
+  private seasonSys: SeasonAndDisasterSystem;
   private config: AgentConfig;
   private allTraits: TraitConfig[];
   private brain: UtilityBrain;
+  private cognition: DeepCognitionEngine;
 
   public name: string;
   public clanName: string;
@@ -61,9 +65,11 @@ export class HeroAgent {
   private path: GridPoint[] = [];
   private targetResource: WorldResource | null = null;
   private latestScores: UtilityScoreItem[] = [];
+  private latestDeepThought!: DeepThoughtOutput;
 
   private berriesEaten = 0;
   private napsTaken = 0;
+  private buildingsCompleted = 0;
   private visitedTiles = new Set<string>();
 
   private sprite: Phaser.GameObjects.Sprite;
@@ -79,6 +85,7 @@ export class HeroAgent {
     scene: Phaser.Scene,
     world: IslandWorld,
     kingdom: KingdomManager,
+    seasonSys: SeasonAndDisasterSystem,
     config: AgentConfig,
     allTraits: TraitConfig[],
     onChronicleLog?: (entry: Omit<ChronicleEntry, 'id'>) => void
@@ -86,9 +93,11 @@ export class HeroAgent {
     this.scene = scene;
     this.world = world;
     this.kingdom = kingdom;
+    this.seasonSys = seasonSys;
     this.config = config;
     this.allTraits = allTraits;
     this.brain = new UtilityBrain(config);
+    this.cognition = new DeepCognitionEngine();
     this.onChronicleLog = onChronicleLog;
 
     this.name = config.defaultHeroName;
@@ -130,6 +139,10 @@ export class HeroAgent {
     this.respawnOnIsland(true);
   }
 
+  public getCognitionEngine(): DeepCognitionEngine {
+    return this.cognition;
+  }
+
   public grantDivineInspiration(): void {
     this.health = this.maxHealth;
     this.energy = this.config.needs.energy.max;
@@ -137,6 +150,18 @@ export class HeroAgent {
     this.int += 1;
     this.loreExp += 60;
     this.kingdom.addResources(10, 8, 5);
+    this.cognition.recordEpisodicMemory({
+      generation: this.generation,
+      heroName: this.name,
+      age: this.currentAge,
+      season: this.seasonSys.getSeasonMeta().id,
+      title: 'ปาฏิหาริย์แห่งแรงบันดาลใจจากพระเจ้า',
+      reflection: 'แสงอบอุ่นสาดส่องลงมาจากฟากฟ้า มอบความรู้แจ้งและทรัพยากรให้ตระกูลของเรา',
+      emotion: 'awe',
+      importance: 9,
+      tileX: this.tileX,
+      tileY: this.tileY,
+    });
     this.spawnFloatingText('✨ พรแห่งปัญญา! (INT +1, ไม้/หิน +10)', '#ffd166');
     this.logEvent(
       `ได้รับ "แรงบันดาลใจจากพระเจ้า"! ฟื้นฟูพลังเต็มเปี่ยม พร้อมเพิ่ม INT เป็น ${this.int}, ภูมิปัญญา +60 และทรัพยากรอาณาจักร`,
@@ -145,6 +170,13 @@ export class HeroAgent {
   }
 
   public triggerNextGenerationHeir(): void {
+    this.cognition.recordAncestralLegacy(
+      this.generation,
+      `${this.name} ${this.clanName}`,
+      this.clanName,
+      this.buildingsCompleted
+    );
+
     this.generation++;
     this.baseAge = 1;
     this.currentAge = 1;
@@ -156,8 +188,22 @@ export class HeroAgent {
     this.energy = this.config.needs.energy.max;
     this.currentStage = this.resolveLifeStage(1);
     this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_0`);
+
+    this.cognition.recordEpisodicMemory({
+      generation: this.generation,
+      heroName: this.name,
+      age: 1,
+      season: this.seasonSys.getSeasonMeta().id,
+      title: `การถือกำเนิดของทายาทรุ่นที่ ${this.generation}`,
+      reflection: `รับสืบทอดมรดกแห่ง ${this.clanName} ท่ามกลางสิ่งปลูกสร้างและคำสอนของบรรพบุรุษ`,
+      emotion: 'wisdom',
+      importance: 10,
+      tileX: this.tileX,
+      tileY: this.tileY,
+    });
+
     this.logEvent(
-      `🌟 สืบทอดมรดกสู่ทายาทรุ่นที่ ${this.generation} แห่ง ${this.clanName}! อาณาจักร สิ่งปลูกสร้าง และภูมิปัญญายังคงอยู่ครบถ้วน`,
+      `🌟 สืบทอดมรดกสู่ทายาทรุ่นที่ ${this.generation} แห่ง ${this.clanName}! อาณาจักร สิ่งปลูกสร้าง และคัมภีร์บรรพบุรุษคงอยู่ครบถ้วน`,
       'milestone'
     );
     this.spawnFloatingText(`🌟 ทายาทรุ่นที่ ${this.generation} (วัยทารก)`, '#8ef6ff');
@@ -226,9 +272,21 @@ export class HeroAgent {
     this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_0`);
 
     this.syncVisualPosition();
-    this.evaluateBrain(true);
+    this.evaluateBrain(true, 0.1);
 
     if (isInitial) {
+      this.cognition.recordEpisodicMemory({
+        generation: this.generation,
+        heroName: this.name,
+        age: this.currentAge,
+        season: 'spring',
+        title: 'แสงแรกข้างกองไฟศักดิ์สิทธิ์',
+        reflection: 'ลืมตาตื่นขึ้นครั้งแรกท่ามกลางไออุ่นของกองไฟและสายหมอกแห่งโมริมาร์',
+        emotion: 'joy',
+        importance: 8,
+        tileX: this.tileX,
+        tileY: this.tileY,
+      });
       this.logEvent(
         `${this.name} ${this.clanName} ถือกำเนิดข้างกองไฟศักดิ์สิทธิ์ที่พิกัด (${this.tileX}, ${this.tileY})`,
         'milestone'
@@ -263,7 +321,7 @@ export class HeroAgent {
 
     this.updateNeeds(simDeltaSec);
     this.checkBeastEncounters();
-    this.evaluateBrain(false);
+    this.evaluateBrain(false, simDeltaSec);
     this.executeCurrentAction(simDeltaSec);
     this.updateAnimations(simDeltaSec);
     this.syncVisualPosition();
@@ -282,6 +340,18 @@ export class HeroAgent {
           this.loreExp += 40;
           this.str += 1;
           this.kingdom.addResources(0, 4, 6);
+          this.cognition.recordEpisodicMemory({
+            generation: this.generation,
+            heroName: this.name,
+            age: this.currentAge,
+            season: this.seasonSys.getSeasonMeta().id,
+            title: 'ชัยชนะเหนือหมาป่าเงา',
+            reflection: 'ยืนหยัดปกป้องผืนแผ่นดินและขับไล่สัตว์ร้ายด้วยพละกำลังของตนเอง',
+            emotion: 'resolve',
+            importance: 9,
+            tileX: this.tileX,
+            tileY: this.tileY,
+          });
           this.spawnFloatingText('⚔️ ปราบหมาป่าเงา! (STR +1)', '#ffd166');
           this.logEvent(
             `ปะทะและขับไล่หมาป่าเงาแห่งพงไพรสำเร็จ! ได้รับ STR +1 และภูมิปัญญา +40`,
@@ -289,6 +359,18 @@ export class HeroAgent {
           );
         } else {
           this.health = Math.max(10, this.health - 12);
+          this.cognition.recordEpisodicMemory({
+            generation: this.generation,
+            heroName: this.name,
+            age: this.currentAge,
+            season: this.seasonSys.getSeasonMeta().id,
+            title: 'รอยแผลแห่งความหวาดกลัวในพงไพร',
+            reflection: 'เผชิญหน้าหมาป่าเงาดุร้ายในขณะที่ยังไร้กำลัง ต้องรีบถอยกลับเข้าหาแสงไฟ',
+            emotion: 'fear',
+            importance: 8,
+            tileX: this.tileX,
+            tileY: this.tileY,
+          });
           this.spawnFloatingText('🐺 ตกใจหมาป่า! หนีเข้าแคมป์!', '#e63946');
           this.logEvent(
             `เผชิญหน้าหมาป่าเงาดุร้าย! รีบวิ่งหนีกลับเข้าหาแสงไฟกลางหมู่บ้าน`,
@@ -306,6 +388,18 @@ export class HeroAgent {
     if (nextStage.id !== this.currentStage.id) {
       this.currentStage = nextStage;
       this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_0`);
+      this.cognition.recordEpisodicMemory({
+        generation: this.generation,
+        heroName: this.name,
+        age: this.currentAge,
+        season: this.seasonSys.getSeasonMeta().id,
+        title: `ก้าวเข้าสู่วัย "${nextStage.name}"`,
+        reflection: nextStage.description,
+        emotion: 'wisdom',
+        importance: 8,
+        tileX: this.tileX,
+        tileY: this.tileY,
+      });
       this.logEvent(
         `เติบโตเข้าสู่ช่วง "${nextStage.name}" ที่อายุ ${this.currentAge} ปี — ${nextStage.description}`,
         'milestone'
@@ -354,6 +448,9 @@ export class HeroAgent {
   private updateNeeds(dt: number): void {
     const { hunger, energy, health } = this.config.needs;
     const weather = this.world.getWeather();
+    const seasonMeta = this.seasonSys.getSeasonMeta();
+    const disaster = this.seasonSys.getActiveDisaster();
+
     const isSleeping = this.currentAction === 'sleep_tree' && this.actionState === 'performing';
     const isWarmingFire =
       this.currentAction === 'warm_campfire' && this.actionState === 'performing';
@@ -395,7 +492,8 @@ export class HeroAgent {
         0,
         this.maxHealth
       );
-      this.loreExp += (0.55 + this.int * 0.14) * dt;
+      const elderMentorBonus = this.currentStage.id === 'elder' ? 1.8 : 1.0;
+      this.loreExp += (0.55 + this.int * 0.14) * elderMentorBonus * dt;
     } else {
       const extraMove = isMoving ? energy.moveExtraDecayPerSec : 0;
       const agiEfficiency = Math.max(0.65, 1 - (this.agi - 5) * 0.03);
@@ -419,12 +517,17 @@ export class HeroAgent {
     const distToFire = fire
       ? Math.hypot(this.tileX - fire.tileX, this.tileY - fire.tileY)
       : 99;
-    const isFreezing = weather.coldDamagePerSec > 0 && distToFire > 8.5;
+    const isColdSnap =
+      weather.coldDamagePerSec > 0 ||
+      seasonMeta.temperatureC < 0 ||
+      disaster === 'blizzard';
+    const isFreezing = isColdSnap && distToFire > 8.5;
 
     const strResilience = Math.max(0.5, 1 - (this.str - 5) * 0.06);
     if (isFreezing) {
+      const coldDmg = Math.max(weather.coldDamagePerSec, disaster === 'blizzard' ? 4.5 : 2.0);
       this.health = Phaser.Math.Clamp(
-        this.health - weather.coldDamagePerSec * strResilience * dt,
+        this.health - coldDmg * strResilience * dt,
         5,
         this.maxHealth
       );
@@ -452,7 +555,48 @@ export class HeroAgent {
     }
   }
 
-  private evaluateBrain(forceReplan: boolean): void {
+  private evaluateBrain(forceReplan: boolean, dt: number): void {
+    const stats = this.world.getResourceStats();
+    const weather = this.world.getWeather();
+    const seasonMeta = this.seasonSys.getSeasonMeta();
+    const activeDisaster = this.seasonSys.getActiveDisaster();
+    const beasts = this.world.getBeasts();
+    const isDangerNear = beasts.some(
+      (b) => Math.hypot(b.tileX - this.tileX, b.tileY - this.tileY) <= 5.5 && this.str < 6
+    );
+
+    const canBuild = this.kingdom.canStartOrContinueBuild(this.int, Math.floor(this.loreExp));
+    const resStock = this.kingdom.getResources();
+
+    // 1. Run Deep Cognition Engine (Age Psychology + Seasonal Foresight + Philosophy + Memories)
+    this.latestDeepThought = this.cognition.evaluateDeepCognition(dt, {
+      heroName: this.name,
+      clanName: this.clanName,
+      generation: this.generation,
+      age: this.currentAge,
+      lifeStageId: this.currentStage.id,
+      str: this.str,
+      int: this.int,
+      agi: this.agi,
+      loreExp: Math.floor(this.loreExp),
+      hunger: this.hunger,
+      maxHunger: this.config.needs.hunger.max,
+      energy: this.energy,
+      maxEnergy: this.config.needs.energy.max,
+      health: this.health,
+      maxHealth: this.maxHealth,
+      season: seasonMeta.id,
+      temperatureC: seasonMeta.temperatureC,
+      activeDisaster,
+      isNight: this.isNight,
+      isDangerNear,
+      wood: resStock.wood,
+      stone: resStock.stone,
+      population: this.kingdom.getMaxPopulation(),
+      hasActiveConstruction: this.kingdom.getActiveSite() !== null,
+      canBuildNextTier: canBuild,
+    });
+
     if (
       (this.currentAction === 'eat_berry' ||
         this.currentAction === 'build_kingdom' ||
@@ -463,15 +607,6 @@ export class HeroAgent {
       return;
     }
 
-    const stats = this.world.getResourceStats();
-    const weather = this.world.getWeather();
-    const beasts = this.world.getBeasts();
-    const isDangerNear = beasts.some(
-      (b) => Math.hypot(b.tileX - this.tileX, b.tileY - this.tileY) <= 5.5 && this.str < 6
-    );
-
-    const canBuild = this.kingdom.canStartOrContinueBuild(this.int, Math.floor(this.loreExp));
-
     const result = this.brain.evaluate({
       hunger: this.hunger,
       maxHunger: this.config.needs.hunger.max,
@@ -480,7 +615,7 @@ export class HeroAgent {
       currentAction: this.currentAction,
       isSleeping: this.currentAction === 'sleep_tree' && this.actionState === 'performing',
       isNight: this.isNight,
-      isSnowing: weather.id === 'snow',
+      isSnowing: weather.id === 'snow' || activeDisaster === 'blizzard',
       isDangerNear,
       isInfant: this.currentStage.id === 'infant',
       exploreTraitBonus: this.getExploreTraitBonus(),
@@ -489,6 +624,7 @@ export class HeroAgent {
       hasBlessingShrine: stats.shrines > 0,
       canBuildKingdom: canBuild,
       hasActiveConstruction: this.kingdom.getActiveSite() !== null,
+      deepModifiers: this.latestDeepThought.actionModifiers,
     });
 
     this.latestScores = result.scores;
@@ -529,12 +665,14 @@ export class HeroAgent {
     } else if (nextAction === 'gather_resources' && prevAction !== 'gather_resources') {
       this.logEvent(`🪓 ออกตัดไม้และสกัดหินเพื่อสะสมทรัพยากรสร้างเมือง`, 'info');
     } else if (nextAction === 'warm_campfire' && prevAction !== 'warm_campfire') {
-      const isSnow = this.world.getWeather().id === 'snow';
+      const isCold =
+        this.world.getWeather().id === 'snow' ||
+        this.seasonSys.getActiveDisaster() === 'blizzard';
       this.logEvent(
-        isSnow
-          ? `❄️ หิมะหนาวเหน็บ! รีบเดินกลับไปผิงไฟศักดิ์สิทธิ์กลางหมู่บ้าน`
-          : `เดินกลับเข้าสู่ลานกองไฟศักดิ์สิทธิ์เพื่อผิงไฟและทบทวนความรู้`,
-        isSnow ? 'warn' : 'info'
+        isCold
+          ? `❄️ อากาศหนาวเหน็บ! รีบเดินกลับไปผิงไฟศักดิ์สิทธิ์กลางหมู่บ้าน`
+          : `เดินกลับเข้าสู่ลานกองไฟศักดิ์สิทธิ์เพื่อผิงไฟและใคร่ครวญปรัชญาชีวิต`,
+        isCold ? 'warn' : 'info'
       );
     } else if (nextAction === 'seek_blessing' && prevAction !== 'seek_blessing') {
       this.logEvent(`🌟 สัมผัสได้ถึงพลังศักดิ์สิทธิ์! มุ่งหน้าไปรับพรจากผลึกดารา`, 'milestone');
@@ -574,11 +712,24 @@ export class HeroAgent {
 
       if (finished || this.actionTimer <= 0) {
         if (finished) {
+          this.buildingsCompleted++;
+          this.cognition.recordEpisodicMemory({
+            generation: this.generation,
+            heroName: this.name,
+            age: this.currentAge,
+            season: this.seasonSys.getSeasonMeta().id,
+            title: `ก่อสร้าง "${site.building.name}" สำเร็จ`,
+            reflection: `ด้วยหยาดเหงื่อและค้อนเหล็ก เราได้สร้าง ${site.building.name} ไว้เป็นรากฐานแก่ลูกหลาน`,
+            emotion: 'resolve',
+            importance: 9,
+            tileX: this.tileX,
+            tileY: this.tileY,
+          });
           this.spawnFloatingText(`🏛️ สร้าง ${site.building.name} สำเร็จ!`, '#ffd166');
         }
         this.toolSprite.setVisible(false);
         this.actionState = 'idle';
-        this.evaluateBrain(true);
+        this.evaluateBrain(true, dt);
       }
       return;
     }
@@ -628,7 +779,7 @@ export class HeroAgent {
         this.toolSprite.setVisible(false);
         this.targetResource = null;
         this.actionState = 'idle';
-        this.evaluateBrain(true);
+        this.evaluateBrain(true, dt);
       }
       return;
     }
@@ -645,7 +796,6 @@ export class HeroAgent {
         return;
       }
       this.targetResource = res;
-      // If rock blocks movement, path to an adjacent walkable tile
       let destX = res.tileX;
       let destY = res.tileY;
       if (res.blocksMovement) {
@@ -697,6 +847,18 @@ export class HeroAgent {
           this.int += 1;
           this.str += 1;
           this.kingdom.addResources(8, 8, 5);
+          this.cognition.recordEpisodicMemory({
+            generation: this.generation,
+            heroName: this.name,
+            age: this.currentAge,
+            season: this.seasonSys.getSeasonMeta().id,
+            title: 'ซึมซับพรจากผลึกดาราสวรรค์',
+            reflection: 'สัมผัสพลังศักดิ์สิทธิ์จากผลึกดาราที่ตกลงมาจากฟากฟ้า จิตใจสว่างไสวด้วยศรัทธา',
+            emotion: 'awe',
+            importance: 9,
+            tileX: this.tileX,
+            tileY: this.tileY,
+          });
           this.spawnFloatingText('💎 รับพรผลึกดารา! (STR/INT +1)', '#8ef6ff');
           this.logEvent(
             `ซึมซับพลังจากผลึกดาราศักดิ์สิทธิ์! ได้รับ STR +1, INT +1 และภูมิปัญญา +55`,
@@ -705,7 +867,7 @@ export class HeroAgent {
         }
         this.targetResource = null;
         this.actionState = 'idle';
-        this.evaluateBrain(true);
+        this.evaluateBrain(true, dt);
       }
       return;
     }
@@ -768,7 +930,7 @@ export class HeroAgent {
         }
         this.targetResource = null;
         this.actionState = 'idle';
-        this.evaluateBrain(true);
+        this.evaluateBrain(true, dt);
       }
       return;
     }
@@ -820,7 +982,7 @@ export class HeroAgent {
         this.spawnFloatingText('สดชื่น! ✨', '#ffd166');
         this.actionState = 'idle';
         this.targetResource = null;
-        this.evaluateBrain(true);
+        this.evaluateBrain(true, dt);
       }
       return;
     }
@@ -878,11 +1040,12 @@ export class HeroAgent {
       this.actionTimer -= dt;
       if (
         (this.actionTimer <= 0 || this.energy >= 92) &&
-        this.world.getWeather().id !== 'snow'
+        this.world.getWeather().id !== 'snow' &&
+        this.seasonSys.getActiveDisaster() !== 'blizzard'
       ) {
         this.spawnFloatingText(`+ปัญญา ✨`, '#ffd166');
         this.actionState = 'idle';
-        this.evaluateBrain(true);
+        this.evaluateBrain(true, dt);
       }
       return;
     }
@@ -917,8 +1080,17 @@ export class HeroAgent {
     }
 
     if (this.path.length === 0) {
-      const radius = this.config.actions.explore_island.maxWanderRadiusTiles;
-      const destTile = this.world.getRandomWalkableTileNear(this.tileX, this.tileY, radius);
+      // Age-appropriate exploration radius! Infants stay close to camp, Teens explore far!
+      const baseRadius = this.config.actions.explore_island.maxWanderRadiusTiles;
+      const ageRadius =
+        this.currentStage.id === 'infant'
+          ? 5
+          : this.currentStage.id === 'child'
+          ? 10
+          : this.currentStage.id === 'teen'
+          ? 24
+          : baseRadius;
+      const destTile = this.world.getRandomWalkableTileNear(this.tileX, this.tileY, ageRadius);
       this.path = findPathAStar(this.world, this.tileX, this.tileY, destTile.x, destTile.y);
       if (this.path.length > 0) {
         this.actionState = 'moving';
@@ -1005,17 +1177,19 @@ export class HeroAgent {
     if (!this.scene.textures.exists(key)) return;
     this.sprite.setTexture(key);
     const sc = this.currentStage?.scale ?? 1.0;
+    // Realistic subtle breathing expansion
+    const breath = 1 + Math.sin(this.workSwingClock * 3.6) * 0.035;
     if (key === 'hero_sleep') {
-      this.sprite.setDisplaySize(Math.round(34 * sc), Math.round(28 * sc));
+      this.sprite.setDisplaySize(Math.round(34 * sc), Math.round(28 * sc * breath));
+      this.sprite.setRotation(0);
     } else {
-      this.sprite.setDisplaySize(Math.round(30 * sc), Math.round(34 * sc));
+      this.sprite.setDisplaySize(
+        Math.round(30 * sc * (2 - breath)),
+        Math.round(34 * sc * breath)
+      );
     }
   }
 
-  /**
-   * Strictly maps all 5 life stages (infant, child, teen, adult, elder)
-   * to their dedicated sprite textures!
-   */
   private getStageSpritePrefix(): string {
     const st = this.currentStage?.id ?? 'adult';
     switch (st) {
@@ -1044,7 +1218,6 @@ export class HeroAgent {
       return;
     }
 
-    // Swinging tool animation when building or gathering
     const isWorking =
       this.actionState === 'performing' &&
       (this.currentAction === 'build_kingdom' || this.currentAction === 'gather_resources');
@@ -1054,9 +1227,18 @@ export class HeroAgent {
       this.toolSprite.setTexture(
         this.currentAction === 'build_kingdom' ? 'icon_hammer' : 'icon_axe'
       );
-      this.toolSprite.setRotation(Math.sin(this.workSwingClock * 14) * 0.65);
+      const swingAngle = Math.sin(this.workSwingClock * 14) * 0.68;
+      this.toolSprite.setRotation(swingAngle);
+      // Realistic upper-body lean while swinging tool!
+      this.sprite.setRotation(swingAngle * 0.14);
+    } else if (this.actionState === 'moving') {
+      this.toolSprite.setVisible(false);
+      // Realistic stride lean while walking/running!
+      const strideTilt = Math.sin(this.workSwingClock * 11) * 0.065;
+      this.sprite.setRotation(strideTilt);
     } else {
       this.toolSprite.setVisible(false);
+      this.sprite.setRotation(0);
     }
 
     const prefix = this.getStageSpritePrefix();
@@ -1177,7 +1359,7 @@ export class HeroAgent {
     } else if (this.currentAction === 'warm_campfire') {
       narrativeAction =
         this.actionState === 'performing'
-          ? 'กำลังนั่งผิงไฟศักดิ์สิทธิ์และใคร่ครวญภูมิปัญญา'
+          ? 'กำลังนั่งผิงไฟศักดิ์สิทธิ์และใคร่ครวญปรัชญาชีวิต'
           : 'กำลังเดินกลับไปยังกองไฟกลางหมู่บ้าน';
       actionStateText = `🔥 ${narrativeAction}`;
     } else if (this.currentAction === 'seek_blessing') {
@@ -1218,7 +1400,7 @@ export class HeroAgent {
       currentActionId: this.currentAction,
       currentActionLabel: actionLabel,
       actionStateText,
-      narrativeCaption: `${this.name} ${this.clanName} ${narrativeAction}`,
+      narrativeCaption: `${this.name} ${this.clanName} ${narrativeAction} — ${this.latestDeepThought.currentMonologue}`,
       scores: this.latestScores,
       berriesEaten: this.berriesEaten,
       napsTaken: this.napsTaken,
@@ -1226,6 +1408,9 @@ export class HeroAgent {
       generation: this.generation,
       activeWeather: this.world.getWeather(),
       kingdom: this.kingdom.getSnapshot(this.int, Math.floor(this.loreExp)),
+      deepThought: this.latestDeepThought,
+      seasonMeta: this.seasonSys.getSeasonMeta(),
+      activeDisaster: this.seasonSys.getActiveDisaster(),
     };
   }
 }

@@ -98,6 +98,10 @@ export class IslandWorld {
     return this.worldContainer;
   }
 
+  public getAllResources(): WorldResource[] {
+    return this.resources;
+  }
+
   private initWeatherDrops(): void {
     const widthPx = this.config.mapWidth * this.config.tileSize;
     const heightPx = this.config.mapHeight * this.config.tileSize;

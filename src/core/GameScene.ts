@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
+import { DisasterId, SeasonId } from '../agent/DeepCognitionEngine';
 import { HeroAgent } from '../agent/HeroAgent';
 import { KingdomManager } from '../kingdom';
 import { HudOverlay } from '../ui/HudOverlay';
 import { IslandWorld } from '../world/IslandWorld';
+import { SeasonAndDisasterSystem } from '../world/SeasonAndDisasterSystem';
 import { generateAllPixelTextures } from './PixelTextures';
 import { bakeAllHighResSpriteSheets } from './SpriteSheetProcessor';
 import { TimeManager } from './TimeManager';
@@ -27,6 +29,7 @@ export class GameScene extends Phaser.Scene {
   private timeManager!: TimeManager;
   private world!: IslandWorld;
   private kingdom!: KingdomManager;
+  private seasonSys!: SeasonAndDisasterSystem;
   private hero!: HeroAgent;
   private hud!: HudOverlay;
 
@@ -101,6 +104,20 @@ export class GameScene extends Phaser.Scene {
         });
       }
     );
+
+    this.seasonSys = new SeasonAndDisasterSystem(this, this.world, (text, type) => {
+      if (!this.hud || !this.hero) return;
+      const clock = this.timeManager.getClockTime();
+      const snap = this.hero.getStatusSnapshot();
+      this.hud.addChronicle({
+        year: snap.age,
+        day: snap.dayOfYear,
+        timeStr: clock.formatted,
+        lifeStageBadge: snap.lifeStage.badge,
+        text,
+        type,
+      });
+    });
 
     this.hud = new HudOverlay(
       this,
@@ -179,6 +196,26 @@ export class GameScene extends Phaser.Scene {
             });
           }
         },
+        onSelectSeason: (seasonId: SeasonId) => {
+          this.seasonSys.setSeasonManual(seasonId);
+          this.refreshHud();
+        },
+        onTriggerDisaster: (disasterId: DisasterId) => {
+          this.seasonSys.triggerDisaster(disasterId);
+          this.hero.getCognitionEngine().recordEpisodicMemory({
+            generation: this.hero.generation,
+            heroName: this.hero.name,
+            age: this.hero.getStatusSnapshot().age,
+            season: this.seasonSys.getSeasonMeta().id,
+            title: `เผชิญหน้าภัยพิบัติ: ${disasterId.toUpperCase()}`,
+            reflection: 'ธรรมชาติและพลังแห่งทวีปสำแดงเดช ต้องตั้งสติและนำพาผู้คนให้รอดพ้น',
+            emotion: disasterId === 'meteor_shower' ? 'awe' : 'fear',
+            importance: 10,
+            tileX: this.hero.tileX,
+            tileY: this.hero.tileY,
+          });
+          this.refreshHud();
+        },
         onSelectGodTool: (toolId: GodToolId) => {
           this.activeGodTool = toolId;
         },
@@ -200,6 +237,7 @@ export class GameScene extends Phaser.Scene {
       this,
       this.world,
       this.kingdom,
+      this.seasonSys,
       this.agentConfig,
       this.traitsList,
       (entry) => {
@@ -400,6 +438,7 @@ export class GameScene extends Phaser.Scene {
     const clock = this.timeManager.getClockTime();
 
     this.world.update(simDeltaSec, deltaMs);
+    this.seasonSys.update(simDeltaSec, deltaMs, this.timeManager.getDayOfYear());
     this.kingdom.update(simDeltaSec, this.hero.int, Math.floor(this.hero.loreExp));
     this.hero.update(
       simDeltaSec,
