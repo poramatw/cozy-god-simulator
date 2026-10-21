@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import {
   BuildingConfig,
   ConstructionSite,
+  EraId,
   FollowerAgent,
   KingdomSnapshot,
   ResourceType,
@@ -21,30 +22,141 @@ const FOLLOWER_NAMES = [
   'รูน่า',
 ];
 
+export interface EraMeta {
+  id: EraId;
+  index: number;
+  name: string;
+  subtitle: string;
+  loreRequired: number;
+  minBuildingsRequired: number;
+}
+
+export const ERAS_ROADMAP: EraMeta[] = [
+  {
+    id: 'stone',
+    index: 0,
+    name: 'ยุคหิน (Stone Age)',
+    subtitle: 'เพิงหนังสัตว์ กองไฟดึกดำบรรพ์ และการเอาชีวิตรอดในพงไพร',
+    loreRequired: 0,
+    minBuildingsRequired: 0,
+  },
+  {
+    id: 'bronze',
+    index: 1,
+    name: 'ยุคสำริด (Bronze & Agrarian Age)',
+    subtitle: 'บ้านไม้หลังคามุงจาก การทดน้ำเพาะปลูก และถนนดินอัด',
+    loreRequired: 70,
+    minBuildingsRequired: 3,
+  },
+  {
+    id: 'medieval',
+    index: 2,
+    name: 'ยุคกลาง (Medieval Kingdom)',
+    subtitle: 'ปราสาทหิน โรงตีเหล็ก คฤหาสน์ขุนนาง และถนนปูหิน',
+    loreRequired: 180,
+    minBuildingsRequired: 5,
+  },
+  {
+    id: 'modern',
+    index: 3,
+    name: 'ยุคปัจจุบัน (Modern Industrial Era)',
+    subtitle: 'อาคารอิฐและกระจก โรงงานอุตสาหกรรม เรือนกระจก และถนนลาดยาง',
+    loreRequired: 360,
+    minBuildingsRequired: 7,
+  },
+  {
+    id: 'future',
+    index: 4,
+    name: 'ยุคอนาคต (Stellar Arcology Future)',
+    subtitle: 'โดมนิเวศวิทยา เตาปฏิกรณ์ฟิวชัน หอคอยควอนตัม และทางเดินพลังงานแสง',
+    loreRequired: 600,
+    minBuildingsRequired: 9,
+  },
+];
+
 export class KingdomManager {
   private scene: Phaser.Scene;
   private world: IslandWorld;
   private buildingsConfig: BuildingConfig[];
 
-  private wood = 18;
-  private stone = 8;
-  private food = 15;
+  private wood = 20;
+  private stone = 10;
+  private food = 18;
+  private currentEraIndex = 0;
+  private heroCloakColor = '#3b7a57';
   private buildingsCount: Record<string, number> = {};
   private activeSite: ConstructionSite | null = null;
   private followers: FollowerAgent[] = [];
   private onLogCallback?: (text: string, type: 'info' | 'milestone') => void;
+  private onEraChangedCallback?: (era: EraMeta) => void;
 
   constructor(
     scene: Phaser.Scene,
     world: IslandWorld,
     buildingsConfig: BuildingConfig[],
-    onLog?: (text: string, type: 'info' | 'milestone') => void
+    onLog?: (text: string, type: 'info' | 'milestone') => void,
+    onEraChanged?: (era: EraMeta) => void
   ) {
     this.scene = scene;
     this.world = world;
     this.buildingsConfig = buildingsConfig;
     this.onLogCallback = onLog;
+    this.onEraChangedCallback = onEraChanged;
     this.initStarterCounts();
+  }
+
+  public setHeroCloakColor(color: string): void {
+    this.heroCloakColor = color;
+  }
+
+  public getCurrentEraMeta(): EraMeta {
+    return ERAS_ROADMAP[this.currentEraIndex] ?? ERAS_ROADMAP[0];
+  }
+
+  public setEraByIndex(index: number, announce = true): EraMeta {
+    const clamped = Phaser.Math.Clamp(index, 0, ERAS_ROADMAP.length - 1);
+    this.currentEraIndex = clamped;
+    const meta = ERAS_ROADMAP[clamped];
+    this.world.setWorldEra(meta.id, this.heroCloakColor);
+
+    // Refresh follower textures for the new era
+    for (let i = 0; i < this.followers.length; i++) {
+      const f = this.followers[i];
+      const prefix = i % 2 === 0 ? 'hero_adult' : 'hero_teen';
+      f.sprite.setTexture(`${prefix}_0`);
+      f.sprite.setDisplaySize(24, 28);
+    }
+
+    if (announce) {
+      this.onLogCallback?.(
+        `วิวัฒนาการโลกก้าวเข้าสู่ "${meta.name}" — ${meta.subtitle}`,
+        'milestone'
+      );
+    }
+    this.onEraChangedCallback?.(meta);
+    return meta;
+  }
+
+  public advanceEraManual(): EraMeta {
+    const nextIdx = (this.currentEraIndex + 1) % ERAS_ROADMAP.length;
+    return this.setEraByIndex(nextIdx, true);
+  }
+
+  private checkAutoEraEvolution(heroLore: number): void {
+    if (this.currentEraIndex >= ERAS_ROADMAP.length - 1) return;
+    const nextMeta = ERAS_ROADMAP[this.currentEraIndex + 1];
+    const totalBuilt = this.getTotalBuildingsCount();
+    if (heroLore >= nextMeta.loreRequired && totalBuilt >= nextMeta.minBuildingsRequired) {
+      this.setEraByIndex(this.currentEraIndex + 1, true);
+    }
+  }
+
+  private getTotalBuildingsCount(): number {
+    let total = 0;
+    for (const b of this.buildingsConfig) {
+      total += this.buildingsCount[b.id] ?? 0;
+    }
+    return total;
   }
 
   private initStarterCounts(): void {
@@ -52,7 +164,6 @@ export class KingdomManager {
     for (const b of this.buildingsConfig) {
       this.buildingsCount[b.id] = 0;
     }
-    // Campfire and 1 starter wooden hut are already on the map at start
     this.buildingsCount['campfire'] = 1;
     this.buildingsCount['wooden_hut'] = 1;
   }
@@ -67,10 +178,12 @@ export class KingdomManager {
       f.toolSprite.destroy();
     }
     this.followers = [];
-    this.wood = 18;
-    this.stone = 8;
-    this.food = 15;
+    this.wood = 20;
+    this.stone = 10;
+    this.food = 18;
+    this.currentEraIndex = 0;
     this.initStarterCounts();
+    this.world.setWorldEra('stone', this.heroCloakColor);
   }
 
   public addResources(woodDelta: number, stoneDelta: number, foodDelta = 0): void {
@@ -155,7 +268,7 @@ export class KingdomManager {
 
     this.drawSiteProgress(this.activeSite);
     this.onLogCallback?.(
-      `เริ่มวางโครงสร้าง "${nextB.name}" ที่พิกัด (${spot.x}, ${spot.y})`,
+      `เริ่มวางรากฐาน "${nextB.name}" ที่พิกัด (${spot.x}, ${spot.y})`,
       'info'
     );
     return this.activeSite;
@@ -227,7 +340,7 @@ export class KingdomManager {
     this.activeSite = null;
 
     this.onLogCallback?.(
-      `ก่อสร้าง "${b.name}" ${b.icon} สำเร็จ! อาณาจักรเจริญรุ่งเรืองขึ้น`,
+      `ก่อสร้าง "${b.name}" สำเร็จ! อาณาจักรเจริญรุ่งเรืองขึ้น`,
       'milestone'
     );
 
@@ -273,7 +386,7 @@ export class KingdomManager {
     const cx = Math.floor(cfg.mapWidth / 2);
     const cy = Math.floor(cfg.mapHeight / 2);
 
-    for (let r = 3; r <= 13; r++) {
+    for (let r = 3; r <= 14; r++) {
       const candidates: { x: number; y: number }[] = [];
       for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
@@ -362,7 +475,7 @@ export class KingdomManager {
       });
 
       this.onLogCallback?.(
-        `ผู้ติดตามคนใหม่ "${name}" (${role === 'builder' ? 'ช่างก่อสร้าง' : role === 'farmer' ? 'ชาวไร่' : 'คนหาของป่า'}) เข้าร่วมหมู่บ้าน!`,
+        `พลเมืองคนใหม่ "${name}" (${role === 'builder' ? 'ช่างก่อสร้าง' : role === 'farmer' ? 'เกษตรกร' : 'นักสำรวจทรัพยากร'}) เข้าร่วมอาณาจักร`,
         'milestone'
       );
     }
@@ -371,7 +484,8 @@ export class KingdomManager {
   public update(simDeltaSec: number, heroInt: number, heroLore: number): void {
     if (simDeltaSec <= 0) return;
 
-    // Ensure initial follower spawns if starter hut provides capacity
+    this.checkAutoEraEvolution(heroLore);
+
     if (this.followers.length < this.getMaxPopulation() && Math.random() < 0.08) {
       this.checkSpawnFollowers();
     }
@@ -399,7 +513,6 @@ export class KingdomManager {
         f.sprite.setTexture(`${prefix}_${frame}`);
         f.sprite.setDisplaySize(24, 28);
       } else {
-        // Working at destination
         f.taskTimer += simDeltaSec;
         f.toolSprite.setVisible(true);
         f.toolSprite.setPosition(f.x + 8, f.y - 12);
@@ -412,7 +525,6 @@ export class KingdomManager {
 
         if (f.taskTimer >= 3.2) {
           f.taskTimer = 0;
-          // Contribute resources
           if (f.role === 'gatherer') {
             this.addResources(2, 1, 0);
             this.world.spawnWorkParticles(f.x, f.y, 'wood');
@@ -422,9 +534,9 @@ export class KingdomManager {
             this.addResources(1, 1, 0);
           }
 
-          // Pick next destination
           if (this.activeSite) {
-            f.targetX = this.activeSite.tileX * tileSize + tileSize / 2 + (Math.random() - 0.5) * 14;
+            f.targetX =
+              this.activeSite.tileX * tileSize + tileSize / 2 + (Math.random() - 0.5) * 14;
             f.targetY = this.activeSite.tileY * tileSize + tileSize / 2 + 8;
           } else {
             const gatherRes = this.world.findNearestGatherResource(
@@ -453,7 +565,6 @@ export class KingdomManager {
       f.toolSprite.setDepth(f.y + 6);
     }
 
-    // Followers can also automatically start a construction site if resources are ready!
     if (!this.activeSite && this.followers.length > 0 && Math.random() < 0.04) {
       this.ensureConstructionSite(heroInt, heroLore);
     }
@@ -479,7 +590,16 @@ export class KingdomManager {
     });
 
     const prosperity =
-      totalBuilt * 25 + this.followers.length * 20 + Math.floor((this.wood + this.stone) * 0.5);
+      totalBuilt * 25 +
+      this.followers.length * 20 +
+      this.currentEraIndex * 80 +
+      Math.floor((this.wood + this.stone) * 0.5);
+
+    const eraMeta = this.getCurrentEraMeta();
+    const nextEraMeta =
+      this.currentEraIndex < ERAS_ROADMAP.length - 1
+        ? ERAS_ROADMAP[this.currentEraIndex + 1]
+        : ERAS_ROADMAP[ERAS_ROADMAP.length - 1];
 
     return {
       wood: Math.floor(this.wood),
@@ -488,6 +608,10 @@ export class KingdomManager {
       population: this.followers.length,
       maxPopulation: this.getMaxPopulation(),
       prosperity,
+      currentEra: eraMeta.id,
+      eraName: eraMeta.name,
+      eraIndex: eraMeta.index,
+      nextEraLoreRequired: nextEraMeta.loreRequired,
       buildingsCount: { ...this.buildingsCount },
       activeSite: this.activeSite
         ? {

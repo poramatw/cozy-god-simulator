@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { createNoise2D } from 'simplex-noise';
 import {
+  bakeBuildingsForEra,
+  bakeCharacterSpritesForEra,
+  EraId,
+} from '../core/ProceduralArtEngine';
+import {
   BiomeConfig,
   ResourceType,
   TileData,
@@ -62,6 +67,7 @@ export class IslandWorld {
   private activeWeather!: WeatherConfig;
 
   private campfireRes: WorldResource | null = null;
+  private currentEra: EraId = 'stone';
   private seeThrough = false;
   private animClock = 0;
   private fireFrame = 0;
@@ -100,6 +106,41 @@ export class IslandWorld {
 
   public getAllResources(): WorldResource[] {
     return this.resources;
+  }
+
+  public getCurrentEra(): EraId {
+    return this.currentEra;
+  }
+
+  public setWorldEra(era: EraId, cloakColor = '#3b7a57'): void {
+    if (this.currentEra === era) return;
+    this.currentEra = era;
+    bakeBuildingsForEra(this.scene, era);
+    bakeCharacterSpritesForEra(this.scene, era, cloakColor);
+
+    const noiseDetail = createNoise2D(createSeededRandom(this.seed + 202));
+    this.paintSmoothPainterlyTerrain(this.seed, noiseDetail);
+
+    // Refresh existing building sprites to reflect the new Era architecture
+    for (const r of this.resources) {
+      if (!r.sprite) continue;
+      if (r.type === 'round_hut') {
+        r.sprite.setTexture('obj_round_hut');
+        r.sprite.setDisplaySize(70, 70);
+      } else if (r.type === 'hut') {
+        r.sprite.setTexture('obj_hut');
+        r.sprite.setDisplaySize(82, 82);
+      } else if (r.type === 'watchtower') {
+        r.sprite.setTexture('obj_watchtower');
+        r.sprite.setDisplaySize(64, 88);
+      } else if (r.type === 'farm_plot') {
+        r.sprite.setTexture('obj_farm_plot');
+        r.sprite.setDisplaySize(68, 60);
+      } else if (r.type === 'stone_smithy') {
+        r.sprite.setTexture('obj_stone_smithy');
+        r.sprite.setDisplaySize(86, 86);
+      }
+    }
   }
 
   private initWeatherDrops(): void {
@@ -307,37 +348,58 @@ export class IslandWorld {
         const n = noiseDetail(lx * 0.06, ly * 0.06); // -1..1
         const micro = noiseDetail(lx * 0.25, ly * 0.25) * 4;
 
-        let r = 10;
-        let g = 18;
-        let b = 30;
+        let r = 20;
+        let g = 52;
+        let b = 82;
 
         if (tile.biome.id === 'deep_water') {
-          r = 8 + n * 4;
-          g = 16 + n * 6;
-          b = 29 + n * 9;
+          r = 22 + n * 5;
+          g = 56 + n * 8;
+          b = 88 + n * 12;
         } else if (tile.biome.id === 'shallow_water') {
-          // Crisp deep-teal stream
-          r = 22 + n * 10;
-          g = 112 + n * 22;
-          b = 142 + n * 24;
+          // Natural clear coastal & river turquoise water
+          r = 46 + n * 10;
+          g = 128 + n * 18;
+          b = 156 + n * 20;
         } else if (tile.isPath) {
-          // Crisp warm cobblestone / packed village earth
-          r = 74 + n * 11 + micro;
-          g = 62 + n * 9 + micro;
-          b = 50 + n * 7 + micro;
+          // Era-evolving road surface!
+          if (this.currentEra === 'stone') {
+            r = 124 + n * 10 + micro;
+            g = 98 + n * 8 + micro;
+            b = 72 + n * 6 + micro;
+          } else if (this.currentEra === 'bronze') {
+            r = 138 + n * 9 + micro;
+            g = 118 + n * 8 + micro;
+            b = 94 + n * 7 + micro;
+          } else if (this.currentEra === 'medieval') {
+            r = 118 + n * 11 + micro;
+            g = 122 + n * 11 + micro;
+            b = 128 + n * 11 + micro;
+          } else if (this.currentEra === 'modern') {
+            r = 58 + n * 4 + micro * 0.5;
+            g = 64 + n * 4 + micro * 0.5;
+            b = 74 + n * 4 + micro * 0.5;
+          } else {
+            // Future cyber-grid road
+            r = 28 + n * 4;
+            g = 46 + n * 8;
+            b = 72 + n * 12;
+          }
         } else if (tile.biome.id === 'sand') {
-          r = 68 + n * 9 + micro;
-          g = 60 + n * 8 + micro;
-          b = 49 + n * 6 + micro;
+          // Warm natural beach sand
+          r = 194 + n * 12 + micro;
+          g = 170 + n * 10 + micro;
+          b = 126 + n * 8 + micro;
         } else if (tile.biome.id === 'grass') {
-          r = 34 + n * 9 + micro;
-          g = 52 + n * 12 + micro;
-          b = 36 + n * 7 + micro;
+          // Sunlit natural meadow grass
+          r = 74 + n * 11 + micro;
+          g = 122 + n * 14 + micro;
+          b = 66 + n * 9 + micro;
         } else {
-          // Deep crisp woodland moss
-          r = 21 + n * 7 + micro;
-          g = 36 + n * 10 + micro;
-          b = 28 + n * 7 + micro;
+          // Rich woodland forest floor
+          r = 48 + n * 8 + micro;
+          g = 86 + n * 11 + micro;
+          b = 48 + n * 8 + micro;
         }
 
         const idx = (ly * lowW + lx) * 4;
@@ -373,12 +435,23 @@ export class IslandWorld {
         ctx.arc(px, py, 3 + rng() * 5, 0, Math.PI);
         ctx.stroke();
       } else if (tile.isPath) {
-        ctx.fillStyle = rng() < 0.5 ? 'rgba(105, 90, 74, 0.42)' : 'rgba(52, 44, 36, 0.38)';
-        ctx.beginPath();
-        ctx.ellipse(px, py, 3.5 + rng() * 4, 2 + rng() * 2.5, rng() * Math.PI, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.currentEra === 'future') {
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+          ctx.fillRect(px - 2, py - 1, 5, 2);
+        } else if (this.currentEra === 'modern') {
+          ctx.fillStyle = 'rgba(226, 232, 240, 0.25)';
+          ctx.fillRect(px - 3, py - 1, 6, 1.5);
+        } else {
+          ctx.fillStyle =
+            this.currentEra === 'medieval'
+              ? 'rgba(148, 163, 184, 0.48)'
+              : 'rgba(105, 85, 64, 0.38)';
+          ctx.beginPath();
+          ctx.ellipse(px, py, 3.5 + rng() * 4, 2 + rng() * 2.5, rng() * Math.PI, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else {
-        ctx.strokeStyle = rng() < 0.55 ? 'rgba(78, 112, 72, 0.52)' : 'rgba(24, 42, 30, 0.55)';
+        ctx.strokeStyle = rng() < 0.55 ? 'rgba(98, 148, 82, 0.55)' : 'rgba(42, 76, 42, 0.50)';
         ctx.lineWidth = 1.3;
         ctx.beginPath();
         ctx.moveTo(px, py);

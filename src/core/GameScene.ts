@@ -102,6 +102,12 @@ export class GameScene extends Phaser.Scene {
           text,
           type,
         });
+      },
+      () => {
+        if (this.hero) {
+          this.hero.refreshEraAppearance();
+          this.refreshHud();
+        }
       }
     );
 
@@ -226,6 +232,16 @@ export class GameScene extends Phaser.Scene {
         onTriggerLegacyHeir: () => {
           this.timeManager.reset();
           this.hero.triggerNextGenerationHeir();
+          this.refreshHud();
+        },
+        onAdvanceEra: () => {
+          this.kingdom.advanceEraManual();
+          this.hero.refreshEraAppearance();
+          this.refreshHud();
+        },
+        onSelectEra: (eraIndex: number) => {
+          this.kingdom.setEraByIndex(eraIndex, true);
+          this.hero.refreshEraAppearance();
           this.refreshHud();
         },
       },

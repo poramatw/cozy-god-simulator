@@ -75,9 +75,10 @@ export class HeroAgent {
   private sprite: Phaser.GameObjects.Sprite;
   private toolSprite: Phaser.GameObjects.Image;
   private heroGlow: Phaser.GameObjects.Image;
-  private thoughtBg: Phaser.GameObjects.Image;
-  private thoughtIcon: Phaser.GameObjects.Image;
   private pathGraphics: Phaser.GameObjects.Graphics;
+  private floatingQueue: { message: string; colorHex: string }[] = [];
+  private floatingCooldown = 0;
+  private activeFloatingTexts: { txt: Phaser.GameObjects.Text; offsetY: number }[] = [];
 
   private onChronicleLog?: (entry: Omit<ChronicleEntry, 'id'>) => void;
 
@@ -115,28 +116,34 @@ export class HeroAgent {
     this.currentAge = config.initialAge;
     this.currentStage = this.resolveLifeStage(this.currentAge);
 
+    const worldContainer = this.world.getWorldContainer();
+
     this.pathGraphics = this.scene.add.graphics();
     this.pathGraphics.setDepth(5);
+    worldContainer.add(this.pathGraphics);
 
     this.heroGlow = this.scene.add.image(0, 0, 'light_warm');
     this.heroGlow.setBlendMode(Phaser.BlendModes.ADD);
-    this.heroGlow.setScale(0.32);
-    this.heroGlow.setAlpha(0.26);
+    this.heroGlow.setScale(0.28);
+    this.heroGlow.setAlpha(0.22);
     this.heroGlow.setDepth(3100);
+    worldContainer.add(this.heroGlow);
 
     this.sprite = this.scene.add.sprite(0, 0, `${this.getStageSpritePrefix()}_0`);
-    this.toolSprite = this.scene.add.image(0, 0, 'icon_hammer');
-    this.toolSprite.setDisplaySize(16, 16);
-    this.toolSprite.setVisible(false);
+    this.sprite.setOrigin(0.5, 0.78);
+    worldContainer.add(this.sprite);
 
-    this.thoughtBg = this.scene.add.image(0, -24, 'thought_bubble');
-    this.thoughtBg.setDisplaySize(20, 20);
-    this.thoughtIcon = this.scene.add.image(0, -25, 'icon_compass');
-    this.thoughtIcon.setDisplaySize(13, 13);
-    this.thoughtBg.setDepth(3400);
-    this.thoughtIcon.setDepth(3401);
+    this.toolSprite = this.scene.add.image(0, 0, 'icon_hammer');
+    this.toolSprite.setDisplaySize(15, 15);
+    this.toolSprite.setOrigin(0.5, 0.75);
+    this.toolSprite.setVisible(false);
+    worldContainer.add(this.toolSprite);
 
     this.respawnOnIsland(true);
+  }
+
+  public refreshEraAppearance(): void {
+    this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_${this.animFrame}`);
   }
 
   public getCognitionEngine(): DeepCognitionEngine {
@@ -217,6 +224,8 @@ export class HeroAgent {
     this.agi = custom.agi;
     this.cloakColor = custom.cloakColor;
     this.activeTraits = this.allTraits.filter((t) => custom.traitIds.includes(t.id));
+    this.kingdom.setHeroCloakColor(this.cloakColor);
+    this.world.setWorldEra(this.world.getCurrentEra(), this.cloakColor);
 
     this.maxHealth = this.config.needs.health.max + (this.str - 5) * 6;
     this.health = this.maxHealth;
@@ -238,7 +247,7 @@ export class HeroAgent {
       `พรแห่งพระเจ้าประทานชีวิตให้ "${this.name} ${this.clanName}" (STR ${this.str} • INT ${this.int} • AGI ${this.agi} | นิสัย: ${traitNames})`,
       'milestone'
     );
-    this.spawnFloatingText('✨ จุติร่างใหม่!', '#ffd166');
+    this.spawnFloatingText('จุติร่างใหม่', '#ffd166');
   }
 
   private resolveLifeStage(age: number): LifeStageConfig {
@@ -324,6 +333,7 @@ export class HeroAgent {
     this.evaluateBrain(false, simDeltaSec);
     this.executeCurrentAction(simDeltaSec);
     this.updateAnimations(simDeltaSec);
+    this.updateFloatingQueue(simDeltaSec);
     this.syncVisualPosition();
     this.drawPathLine();
   }
@@ -642,10 +652,6 @@ export class HeroAgent {
     this.actionState = 'idle';
     this.actionTimer = 0;
     this.toolSprite.setVisible(false);
-
-    const iconKey = this.config.actions[nextAction].icon;
-    this.thoughtIcon.setTexture(iconKey);
-    this.thoughtIcon.setDisplaySize(13, 13);
 
     if (nextAction === 'eat_berry' && prevAction !== 'eat_berry') {
       this.logEvent(
@@ -1263,12 +1269,15 @@ export class HeroAgent {
     this.sprite.setDepth(this.y + 3);
     this.heroGlow.setPosition(this.x, this.y - 4);
 
-    this.toolSprite.setPosition(this.x + (this.sprite.flipX ? -10 : 10), this.y - 12);
+    this.toolSprite.setPosition(this.x + (this.sprite.flipX ? -11 : 11), this.y - 10);
     this.toolSprite.setDepth(this.y + 6);
 
-    const bobOffset = this.animFrame === 1 ? -1.5 : 0;
-    this.thoughtBg.setPosition(this.x, this.y - 24 + bobOffset);
-    this.thoughtIcon.setPosition(this.x, this.y - 25 + bobOffset);
+    for (let i = 0; i < this.activeFloatingTexts.length; i++) {
+      const item = this.activeFloatingTexts[i];
+      if (item.txt.active) {
+        item.txt.setX(this.x);
+      }
+    }
   }
 
   private drawPathLine(): void {
@@ -1292,25 +1301,61 @@ export class HeroAgent {
   }
 
   private spawnFloatingText(message: string, colorHex: string): void {
-    const txt = this.scene.add.text(this.x, this.y - 26, message, {
-      fontFamily: '"Chakra Petch", sans-serif',
-      fontSize: '11px',
-      fontStyle: 'bold',
-      color: colorHex,
-      stroke: '#06070b',
-      strokeThickness: 3,
-    });
-    txt.setOrigin(0.5, 0.5);
-    txt.setDepth(3500);
+    // Prevent duplicate stacking in queue
+    if (this.floatingQueue.some((q) => q.message === message)) return;
+    if (this.floatingQueue.length >= 4) {
+      this.floatingQueue.shift();
+    }
+    this.floatingQueue.push({ message, colorHex });
+  }
 
-    this.scene.tweens.add({
-      targets: txt,
-      y: txt.y - 18,
-      alpha: { from: 1, to: 0 },
-      duration: 950,
-      ease: 'Cubic.easeOut',
-      onComplete: () => txt.destroy(),
-    });
+  private updateFloatingQueue(dt: number): void {
+    if (this.floatingCooldown > 0) {
+      this.floatingCooldown -= dt;
+    }
+
+    // Clean up destroyed labels
+    this.activeFloatingTexts = this.activeFloatingTexts.filter((item) => item.txt.active);
+
+    if (this.floatingCooldown <= 0 && this.floatingQueue.length > 0) {
+      const next = this.floatingQueue.shift()!;
+      this.floatingCooldown = 0.42;
+
+      // Push existing active floating labels up by 16px so they never overlap!
+      for (const existing of this.activeFloatingTexts) {
+        existing.offsetY -= 16;
+        existing.txt.setY(existing.txt.y - 16);
+      }
+
+      const startY = this.y - 34;
+      const txt = this.scene.add.text(this.x, startY, next.message, {
+        fontFamily: '"Chakra Petch", sans-serif',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: next.colorHex,
+        backgroundColor: 'rgba(11, 14, 20, 0.78)',
+        padding: { x: 6, y: 2 },
+        stroke: '#06070b',
+        strokeThickness: 2,
+      });
+      txt.setOrigin(0.5, 0.5);
+      txt.setDepth(3500);
+      this.world.getWorldContainer().add(txt);
+
+      const entry = { txt, offsetY: -34 };
+      this.activeFloatingTexts.push(entry);
+
+      this.scene.tweens.add({
+        targets: txt,
+        y: startY - 22,
+        alpha: { from: 1, to: 0 },
+        duration: 1150,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          txt.destroy();
+        },
+      });
+    }
   }
 
   private logEvent(text: string, type: ChronicleEntry['type']): void {

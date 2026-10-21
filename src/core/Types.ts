@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { DeepThoughtOutput, DisasterId } from '../agent/DeepCognitionEngine';
 import { SeasonMetadata } from '../world/SeasonAndDisasterSystem';
+import { EraId } from './ProceduralArtEngine';
+
+export type { EraId };
 
 export type BiomeId = 'deep_water' | 'shallow_water' | 'sand' | 'grass' | 'forest';
 
@@ -133,6 +136,10 @@ export interface FollowerAgent {
 }
 
 export interface KingdomSnapshot {
+  currentEra: EraId;
+  eraName: string;
+  eraIndex: number;
+  nextEraLoreRequired: number;
   wood: number;
   stone: number;
   food: number;
