@@ -323,8 +323,8 @@ export class IslandWorld {
     const heightPx = mapHeight * tileSize;
     const texKey = 'world_seamless_terrain';
 
-    // Higher-definition base terrain grid (6x per tile) for crisp biome transitions without blurry haze
-    const subRes = 6;
+    // Fast, crisp terrain grid (3x per tile = 384x384) for smooth 60fps biome & era transitions
+    const subRes = 3;
     const lowW = mapWidth * subRes;
     const lowH = mapHeight * subRes;
     const offCanvas = document.createElement('canvas');
@@ -428,7 +428,7 @@ export class IslandWorld {
 
     // Paint crisp high-resolution ground details (sharp grass blades, cobble stones, water ripples)
     const rng = createSeededRandom(seed + 999);
-    for (let i = 0; i < 6500; i++) {
+    for (let i = 0; i < 2600; i++) {
       const px = rng() * widthPx;
       const py = rng() * heightPx;
       const tx = Math.floor(px / tileSize);

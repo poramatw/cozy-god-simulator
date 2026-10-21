@@ -50,12 +50,39 @@ export class GameScene extends Phaser.Scene {
   private hoveredTileX = -1;
   private hoveredTileY = -1;
   private uiRefreshTimer = 0;
+  private isReady = false;
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
+  private setLoadingProgress(pct: number, message: string): void {
+    const fill = document.getElementById('loader-bar-fill');
+    const txt = document.getElementById('loader-step-text');
+    const pctEl = document.getElementById('loader-pct-text');
+    const screen = document.getElementById('loading-screen');
+    if (screen) screen.classList.remove('hidden');
+    if (fill) fill.style.width = `${pct}%`;
+    if (txt) txt.textContent = message;
+    if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+  }
+
+  private hideLoadingScreen(): void {
+    const screen = document.getElementById('loading-screen');
+    if (screen) {
+      screen.classList.add('hidden');
+    }
+  }
+
+  private nextFrame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
   public preload(): void {
+    this.setLoadingProgress(12, 'กำลังโหลดข้อมูลสมดุลโลกและพันธุกรรม...');
+    this.load.on('progress', (val: number) => {
+      this.setLoadingProgress(12 + val * 18, 'กำลังโหลดฐานข้อมูลระบบจำลอง...');
+    });
     this.load.json('world_config', 'assets/data/world_config.json');
     this.load.json('agent_config', 'assets/data/agent_config.json');
     this.load.json('traits_data', 'assets/data/traits.json');
@@ -64,6 +91,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   public create(): void {
+    void this.initWorldStaged();
+  }
+
+  private async initWorldStaged(): Promise<void> {
+    this.isReady = false;
+    this.setLoadingProgress(35, 'กำลังสังเคราะห์พื้นผิวธรรมชาติและต้นไม้ High-DPI...');
+    await this.nextFrame();
+
     this.worldConfig = this.cache.json.get('world_config') as WorldConfig;
     this.agentConfig = this.cache.json.get('agent_config') as AgentConfig;
     const rawTraits = this.cache.json.get('traits_data') as { traits: TraitConfig[] };
@@ -74,10 +109,20 @@ export class GameScene extends Phaser.Scene {
     this.buildingsList = rawBuildings?.buildings ?? [];
 
     generateAllPixelTextures(this);
+    await this.nextFrame();
+
+    this.setLoadingProgress(58, 'กำลังเรนเดอร์สถาปัตยกรรมและโมเดลตัวละคร 5 ยุคสมัย...');
+    await this.nextFrame();
     bakeAllHighResSpriteSheets(this);
+
+    this.setLoadingProgress(78, 'กำลังสร้างภูมิประเทศทวีป 128×128 ด้วย Simplex Noise...');
+    await this.nextFrame();
 
     this.timeManager = new TimeManager(this.agentConfig.secondsPerYear);
     this.world = new IslandWorld(this, this.worldConfig, this.weatherList[0]);
+
+    this.setLoadingProgress(92, 'กำลังปลุกสมอง Deep Cognition AI และระบบอาณาจักร...');
+    await this.nextFrame();
 
     this.kingdom = new KingdomManager(
       this,
@@ -261,6 +306,10 @@ export class GameScene extends Phaser.Scene {
 
     this.setupCameraAndInput();
     this.refreshHud();
+    this.setLoadingProgress(100, 'พร้อมเข้าสู่โลกแห่งโมริมาร์!');
+    await this.nextFrame();
+    this.isReady = true;
+    this.hideLoadingScreen();
   }
 
   private setupCameraAndInput(): void {
@@ -443,6 +492,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   public update(_time: number, deltaMs: number): void {
+    if (!this.isReady) return;
     const simDeltaSec = this.timeManager.update(deltaMs);
     const clock = this.timeManager.getClockTime();
 

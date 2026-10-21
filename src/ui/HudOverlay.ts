@@ -155,9 +155,12 @@ export class HudOverlay {
     weatherEvents: WeatherConfig[]
   ) {
     this.scene = scene;
-    const container = document.getElementById('ui-layer');
+    let container = document.getElementById('ui-layer');
     if (!container) {
-      throw new Error('#ui-layer not found');
+      container = document.createElement('div');
+      container.id = 'ui-layer';
+      container.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:30;';
+      document.body.appendChild(container);
     }
     this.root = container;
     this.callbacks = callbacks;
