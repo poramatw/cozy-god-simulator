@@ -12,7 +12,10 @@ import {
   AgentConfig,
   BuildingConfig,
   BuildingsData,
+  CalamityMode,
   GodToolId,
+  HeirCandidate,
+  TimeSpeed,
   TraitConfig,
   WeatherConfig,
   WeatherId,
@@ -51,6 +54,10 @@ export class GameScene extends Phaser.Scene {
   private hoveredTileY = -1;
   private uiRefreshTimer = 0;
   private isReady = false;
+  private lastRunningSpeed: TimeSpeed = 1;
+  private hasTriggeredWorldEnd = false;
+  private calamityMode: CalamityMode = 'balanced';
+  private eschatonWarningLogged = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -79,15 +86,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   public preload(): void {
-    this.setLoadingProgress(12, 'กำลังโหลดข้อมูลสมดุลโลกและพันธุกรรม...');
+    this.setLoadingProgress(8, 'กำลังโหลดภาพประกอบ Cozy Realistic 2.5D และฐานข้อมูลโลก...');
     this.load.on('progress', (val: number) => {
-      this.setLoadingProgress(12 + val * 18, 'กำลังโหลดฐานข้อมูลระบบจำลอง...');
+      this.setLoadingProgress(
+        8 + val * 38,
+        `กำลังดาวน์โหลดภาพศิลป์ Cozy Realistic 2.5D (${Math.round(val * 100)}%)...`
+      );
     });
+
     this.load.json('world_config', 'assets/data/world_config.json');
     this.load.json('agent_config', 'assets/data/agent_config.json');
     this.load.json('traits_data', 'assets/data/traits.json');
     this.load.json('weather_data', 'assets/data/weather_events.json');
     this.load.json('buildings_data', 'assets/data/buildings.json');
+
+    // Genuine Cozy Realistic Hand-Painted 2.5D Sprite Sheets
+    this.load.image('sheet_buildings', 'assets/sprites/hd_buildings_sheet.jpg');
+    this.load.image('sheet_flora', 'assets/sprites/hd_flora_sheet.jpg');
+    this.load.image('sheet_characters', 'assets/sprites/hd_characters_sheet.jpg');
+    this.load.image('sheet_phase3', 'assets/sprites/hd_phase3_sheet.jpg');
+    this.load.image('sheet_kingdom', 'assets/sprites/hd_kingdom_sheet.jpg');
+    this.load.image('sheet_eras', 'assets/sprites/hd_eras_sheet.jpg');
   }
 
   public create(): void {
@@ -96,7 +115,7 @@ export class GameScene extends Phaser.Scene {
 
   private async initWorldStaged(): Promise<void> {
     this.isReady = false;
-    this.setLoadingProgress(35, 'กำลังสังเคราะห์พื้นผิวธรรมชาติและต้นไม้ High-DPI...');
+    this.setLoadingProgress(48, 'กำลังเตรียมพื้นผิวผืนป่าและสภาพแวดล้อม Cozy Realistic...');
     await this.nextFrame();
 
     this.worldConfig = this.cache.json.get('world_config') as WorldConfig;
@@ -111,17 +130,18 @@ export class GameScene extends Phaser.Scene {
     generateAllPixelTextures(this);
     await this.nextFrame();
 
-    this.setLoadingProgress(58, 'กำลังเรนเดอร์สถาปัตยกรรมและโมเดลตัวละคร 5 ยุคสมัย...');
+    this.setLoadingProgress(66, 'กำลังสกัดภาพวาด Cozy Realistic 2.5D สำหรับตัวละครและอาคาร 5 ยุค...');
     await this.nextFrame();
     bakeAllHighResSpriteSheets(this);
 
-    this.setLoadingProgress(78, 'กำลังสร้างภูมิประเทศทวีป 128×128 ด้วย Simplex Noise...');
+    this.setLoadingProgress(82, 'กำลังสร้างภูมิประเทศทวีป 128×128 ด้วย Simplex Noise...');
     await this.nextFrame();
 
     this.timeManager = new TimeManager(this.agentConfig.secondsPerYear);
+    this.timeManager.setMaxWorldYears(300);
     this.world = new IslandWorld(this, this.worldConfig, this.weatherList[0]);
 
-    this.setLoadingProgress(92, 'กำลังปลุกสมอง Deep Cognition AI และระบบอาณาจักร...');
+    this.setLoadingProgress(94, 'กำลังปลุกสมอง Deep Cognition AI และระบบสืบทอดตระกูล...');
     await this.nextFrame();
 
     this.kingdom = new KingdomManager(
@@ -166,7 +186,10 @@ export class GameScene extends Phaser.Scene {
     this.hud = new HudOverlay(
       this,
       {
-        onSpeedChange: (speed) => this.timeManager.setSpeed(speed),
+        onSpeedChange: (speed) => {
+          if (speed > 0) this.lastRunningSpeed = speed;
+          this.timeManager.setSpeed(speed);
+        },
         onToggleFollow: () => {
           this.followHero = !this.followHero;
           return this.followHero;
@@ -177,6 +200,8 @@ export class GameScene extends Phaser.Scene {
           return next;
         },
         onRegenerateWorld: () => {
+          this.hasTriggeredWorldEnd = false;
+          this.eschatonWarningLogged = false;
           this.hud.clearChronicles();
           this.timeManager.reset();
           this.world.regenerate();
@@ -186,6 +211,10 @@ export class GameScene extends Phaser.Scene {
           this.hud.setFollowState(true);
           this.cameras.main.setZoom(1.85);
           this.centerCameraOnHero();
+          this.timeManager.setSpeed(0);
+          this.hud.setSpeedButtonsUI(0);
+          this.refreshHud();
+          this.hud.openGenesisModal(true);
         },
         onCenterHero: () => {
           this.followHero = true;
@@ -215,13 +244,53 @@ export class GameScene extends Phaser.Scene {
           this.cameras.main.pan(cx, cy, 450, 'Sine.easeInOut');
           this.cameras.main.zoomTo(0.48, 450, 'Sine.easeInOut');
         },
-        onApplyHeroCustomization: (custom) => {
-          this.timeManager.reset();
+        onApplyHeroCustomization: (custom, isInitialGenesis) => {
+          this.hasTriggeredWorldEnd = false;
+          this.eschatonWarningLogged = false;
+          this.calamityMode = custom.calamityMode ?? 'balanced';
+          if (custom.maxWorldYears !== undefined) {
+            this.timeManager.setMaxWorldYears(custom.maxWorldYears);
+          }
+          if (isInitialGenesis) {
+            this.timeManager.reset();
+          } else {
+            this.timeManager.resetHeroAgeTimer();
+          }
           this.hero.applyCustomization(custom, true);
           this.hero.respawnOnIsland(false);
           this.followHero = true;
           this.hud.setFollowState(true);
           this.centerCameraOnHero();
+          this.timeManager.setSpeed(this.lastRunningSpeed);
+          this.hud.setSpeedButtonsUI(this.lastRunningSpeed);
+          this.refreshHud();
+        },
+        onSelectHeir: (heir: HeirCandidate) => {
+          this.timeManager.resetHeroAgeTimer();
+          this.hero.ascendChosenHeir(heir);
+          this.followHero = true;
+          this.hud.setFollowState(true);
+          this.centerCameraOnHero();
+          this.timeManager.setSpeed(this.lastRunningSpeed);
+          this.hud.setSpeedButtonsUI(this.lastRunningSpeed);
+          this.refreshHud();
+        },
+        onExtendWorldLifespan: (extraYears: number) => {
+          this.hasTriggeredWorldEnd = false;
+          this.eschatonWarningLogged = false;
+          this.timeManager.extendWorldLifespan(extraYears);
+          const clock = this.timeManager.getClockTime();
+          const snap = this.hero.getStatusSnapshot();
+          this.hud.addChronicle({
+            year: snap.age,
+            day: snap.dayOfYear,
+            timeStr: clock.formatted,
+            lifeStageBadge: snap.lifeStage.badge,
+            text: `✨ พระเจ้าประทานพรต่ออายุขัยของโลกออกไปอีก +${extraYears} ปี! สายเลือดแห่ง ${snap.clanName} ได้รับโอกาสสานต่ออารยธรรม`,
+            type: 'milestone',
+          });
+          this.timeManager.setSpeed(this.lastRunningSpeed);
+          this.hud.setSpeedButtonsUI(this.lastRunningSpeed);
           this.refreshHud();
         },
         onSelectWeather: (weatherId: WeatherId) => {
@@ -268,7 +337,6 @@ export class GameScene extends Phaser.Scene {
           this.refreshHud();
         },
         onTriggerLegacyHeir: () => {
-          this.timeManager.reset();
           this.hero.triggerNextGenerationHeir();
           this.refreshHud();
         },
@@ -296,6 +364,11 @@ export class GameScene extends Phaser.Scene {
       this.traitsList,
       (entry) => {
         this.hud.addChronicle(entry);
+      },
+      (candidates) => {
+        this.timeManager.setSpeed(0);
+        this.hud.setSpeedButtonsUI(0);
+        this.hud.openHeirSuccessionModal(candidates, this.hero.getStatusSnapshot());
       }
     );
 
@@ -305,11 +378,17 @@ export class GameScene extends Phaser.Scene {
     this.tileCursor.setAlpha(0.85);
 
     this.setupCameraAndInput();
+
+    // Pause simulation initially so the player configures their Founder Hero & World Lifespan first
+    this.timeManager.setSpeed(0);
+    this.hud.setSpeedButtonsUI(0);
     this.refreshHud();
-    this.setLoadingProgress(100, 'พร้อมเข้าสู่โลกแห่งโมริมาร์!');
+
+    this.setLoadingProgress(100, 'พร้อมเข้าสู่ปฐมกาลแห่งโมริมาร์!');
     await this.nextFrame();
     this.isReady = true;
     this.hideLoadingScreen();
+    this.hud.openGenesisModal(true);
   }
 
   private setupCameraAndInput(): void {
@@ -495,6 +574,40 @@ export class GameScene extends Phaser.Scene {
     if (!this.isReady) return;
     const simDeltaSec = this.timeManager.update(deltaMs);
     const clock = this.timeManager.getClockTime();
+    const worldYear = this.timeManager.getWorldYear();
+    const maxWorldYears = this.timeManager.getMaxWorldYears();
+
+    // Check Eschaton approaching warning (final 12% of world lifespan)
+    if (
+      !this.eschatonWarningLogged &&
+      maxWorldYears > 0 &&
+      worldYear >= Math.floor(maxWorldYears * 0.88) &&
+      worldYear < maxWorldYears
+    ) {
+      this.eschatonWarningLogged = true;
+      const snap = this.hero.getStatusSnapshot();
+      this.hud.addChronicle({
+        year: snap.age,
+        day: snap.dayOfYear,
+        timeStr: clock.formatted,
+        lifeStageBadge: snap.lifeStage.badge,
+        text: `🌑 ลางบอกเหตุแห่งกาลอวสาน! โลกเดินทางมาถึงปีที่ ${worldYear}/${maxWorldYears} พลังธรรมชาติเริ่มแปรปรวนก่อนสิ้นสุดยุคสมัย`,
+        type: 'warn',
+      });
+      if (this.calamityMode !== 'cozy') {
+        this.seasonSys.triggerDisaster('meteor_shower');
+      }
+    }
+
+    // Check World Eschaton / End of World
+    if (!this.hasTriggeredWorldEnd && this.timeManager.isWorldEnded()) {
+      this.hasTriggeredWorldEnd = true;
+      this.timeManager.setSpeed(0);
+      this.hud.setSpeedButtonsUI(0);
+      this.refreshHud();
+      this.hud.openWorldEndModal(this.hero.getStatusSnapshot());
+      return;
+    }
 
     this.world.update(simDeltaSec, deltaMs);
     this.seasonSys.update(simDeltaSec, deltaMs, this.timeManager.getDayOfYear());
@@ -504,7 +617,9 @@ export class GameScene extends Phaser.Scene {
       this.timeManager.getElapsedYears(),
       this.timeManager.getDayOfYear(),
       clock.formatted,
-      clock.isNight
+      clock.isNight,
+      worldYear,
+      maxWorldYears
     );
 
     this.handleCameraMovement(deltaMs);

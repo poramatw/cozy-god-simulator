@@ -6,9 +6,11 @@ import {
   SeasonId,
 } from '../agent/DeepCognitionEngine';
 import {
+  CalamityMode,
   ChronicleEntry,
   EraId,
   GodToolId,
+  HeirCandidate,
   HeroCustomization,
   HeroStatusSnapshot,
   TileData,
@@ -28,7 +30,9 @@ export interface HudCallbacks {
   onCenterVillage: () => void;
   onZoomDelta: (delta: number) => void;
   onZoomFullWorld: () => void;
-  onApplyHeroCustomization: (custom: HeroCustomization) => void;
+  onApplyHeroCustomization: (custom: HeroCustomization, isInitialGenesis: boolean) => void;
+  onSelectHeir: (heir: HeirCandidate) => void;
+  onExtendWorldLifespan: (extraYears: number) => void;
   onSelectWeather: (weatherId: WeatherId) => void;
   onSelectSeason: (seasonId: SeasonId) => void;
   onTriggerDisaster: (disasterId: DisasterId) => void;
@@ -48,6 +52,26 @@ const CLOAK_PRESETS = [
   { name: 'Obsidian Ranger', hex: '#334155' },
 ];
 
+const STARTING_AGE_OPTIONS = [
+  { age: 1, label: 'วัยทารก (1 ปี)', stageId: 'infant', desc: 'เริ่มต้นตั้งแต่วัยเตาะแตะ ค่อยๆ เรียนรู้โลก' },
+  { age: 7, label: 'วัยเด็ก (7 ปี)', stageId: 'child', desc: 'วัยช่างสงสัย วิ่งสำรวจพงไพรอย่างร่าเริง' },
+  { age: 14, label: 'วัยรุ่น (14 ปี)', stageId: 'teen', desc: 'เริ่มบุกเบิกสร้างรากฐานและสะสมภูมิปัญญา' },
+  { age: 22, label: 'วัยผู้ใหญ่ (22 ปี)', stageId: 'adult', desc: 'พร้อมเต็มกำลังในการก่อตั้งอาณาจักรทันที' },
+];
+
+const WORLD_LIFESPAN_OPTIONS = [
+  { years: 150, label: '150 ปี', sub: 'ยุคสั้น (ประมาณ 2–3 รุ่นตระกูล)' },
+  { years: 300, label: '300 ปี', sub: 'มาตรฐาน (ประมาณ 5–6 รุ่นตระกูล)' },
+  { years: 600, label: '600 ปี', sub: 'มหากาพย์ (10+ รุ่นตระกูล)' },
+  { years: 0, label: '∞ นิรันดร์กาล', sub: 'ไม่มีวันดับสูญ เล่นสืบทอดได้ไม่จำกัด' },
+];
+
+const CALAMITY_OPTIONS: { id: CalamityMode; label: string; desc: string }[] = [
+  { id: 'cozy', label: 'สงบสุขแสนอบอุ่น (Cozy)', desc: 'อากาศอบอุ่น ภัยพิบัติเกิดขึ้นน้อยมาก เหมาะกับการชมวิถีชีวิตชิลๆ' },
+  { id: 'balanced', label: 'สมดุลธรรมชาติ (Balanced)', desc: 'ฤดูกาลผันแปรตามปกติ มีบททดสอบจากธรรมชาติเป็นครั้งคราว' },
+  { id: 'cataclysm', label: 'กลียุคท้าทาย (Cataclysm)', desc: 'ภัยพิบัติรุนแรงและถี่ขึ้นเมื่อใกล้ถึงวันสิ้นโลก ท้าทายการอยู่รอดของตระกูล' },
+];
+
 type DrawerTabId = 'hero' | 'mind' | 'epochs' | 'chronicle';
 type DockTabId = 'miracles' | 'climate' | 'disasters';
 
@@ -58,6 +82,7 @@ const SVG_ICONS = {
   pop: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.85"/></svg>`,
   lore: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
   era: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>`,
+  world: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
   eye: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
 };
 
@@ -75,20 +100,25 @@ export class HudOverlay {
   private isHudHidden = false;
   private isDrawerCollapsed = false;
   private lastPortraitTextureKey = '';
+  private isInitialGenesisMode = true;
 
   private draftCustom: HeroCustomization = {
     name: 'เอเรน',
     clanName: 'แห่งโมริมาร์',
-    str: 5,
-    int: 5,
-    agi: 5,
+    str: 6,
+    int: 6,
+    agi: 6,
     traitIds: ['fleet_footed', 'forest_child'],
     cloakColor: '#3b7a57',
+    startingAge: 14,
+    maxWorldYears: 300,
+    calamityMode: 'balanced',
   };
   private maxPointBudget = 18;
 
   // Top Bar Elements
   private eraBadgeNameEl!: HTMLElement;
+  private worldAgeLabelEl!: HTMLElement;
   private resWoodEl!: HTMLElement;
   private resStoneEl!: HTMLElement;
   private resFoodEl!: HTMLElement;
@@ -145,8 +175,10 @@ export class HudOverlay {
   private tileInspectorEl!: HTMLElement;
   private disasterAlertBannerEl!: HTMLElement;
 
-  // Modal Elements
+  // Modals
   private modalBackdropEl!: HTMLElement;
+  private heirModalBackdropEl!: HTMLElement;
+  private worldEndModalBackdropEl!: HTMLElement;
 
   constructor(
     scene: Phaser.Scene,
@@ -206,7 +238,7 @@ export class HudOverlay {
       .studio-brand-group {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
       }
       .studio-brand-title {
         font-size: 13px;
@@ -224,6 +256,18 @@ export class HudOverlay {
         background: rgba(245, 158, 11, 0.12);
         border: 1px solid rgba(245, 158, 11, 0.38);
         color: #fbbf24;
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+      .studio-world-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.32);
+        color: #7dd3fc;
         font-size: 11.5px;
         font-weight: 600;
       }
@@ -253,11 +297,25 @@ export class HudOverlay {
         color: #fcd34d;
         border-color: rgba(245, 158, 11, 0.55);
       }
+      .studio-btn.primary-cta {
+        background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+        color: #090d16;
+        border: 1px solid #fde68a;
+        font-weight: 700;
+        padding: 8px 18px;
+        font-size: 13px;
+        box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
+      }
+      .studio-btn.primary-cta:hover {
+        background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+        color: #090d16;
+        transform: translateY(-1px);
+      }
       .studio-res-ledger {
         display: flex;
         align-items: center;
-        gap: 16px;
-        padding: 4px 14px;
+        gap: 14px;
+        padding: 4px 12px;
         border-radius: 4px;
         background: rgba(15, 23, 42, 0.75);
         border: 1px solid rgba(148, 163, 184, 0.15);
@@ -399,6 +457,39 @@ export class HudOverlay {
         border-color: #f59e0b;
         background: rgba(245, 158, 11, 0.12);
       }
+      .studio-choice-card {
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(15, 23, 42, 0.65);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .studio-choice-card:hover {
+        border-color: rgba(245, 158, 11, 0.45);
+        background: rgba(30, 41, 59, 0.8);
+      }
+      .studio-choice-card.active {
+        border-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.15);
+      }
+      .heir-card {
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(212, 175, 106, 0.28);
+        background: rgba(15, 23, 42, 0.82);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 10px;
+        transition: all 0.18s ease;
+      }
+      .heir-card:hover {
+        border-color: #fbbf24;
+        background: rgba(30, 41, 59, 0.92);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      }
     `;
     document.head.appendChild(style);
   }
@@ -412,7 +503,7 @@ export class HudOverlay {
     topBar.className = 'studio-topbar';
     topBar.innerHTML = `
       <div class="studio-brand-group">
-        <span class="studio-brand-title">CHRONICLES OF MORIMAR</span>
+        <span class="studio-brand-title">MORIMAR</span>
         <div class="studio-era-pill">
           ${SVG_ICONS.era}
           <span id="hud-era-name">ยุคหิน (Stone Age)</span>
@@ -420,6 +511,10 @@ export class HudOverlay {
         <button class="studio-btn gold" id="btn-advance-era" title="วิวัฒนาการโลกสู่ยุคถัดไปทันที">
           วิวัฒนาการยุค ▸
         </button>
+        <div class="studio-world-pill" title="อายุขัยของโลกปัจจุบันเทียบกับกาลอวสานที่กำหนดไว้">
+          ${SVG_ICONS.world}
+          <span id="hud-world-age">อายุโลก: ปีที่ 1 / 300</span>
+        </div>
       </div>
 
       <div class="studio-res-ledger">
@@ -473,6 +568,7 @@ export class HudOverlay {
     this.root.appendChild(topBar);
 
     this.eraBadgeNameEl = topBar.querySelector('#hud-era-name') as HTMLElement;
+    this.worldAgeLabelEl = topBar.querySelector('#hud-world-age') as HTMLElement;
     this.resWoodEl = topBar.querySelector('#res-wood') as HTMLElement;
     this.resStoneEl = topBar.querySelector('#res-stone') as HTMLElement;
     this.resFoodEl = topBar.querySelector('#res-food') as HTMLElement;
@@ -512,11 +608,11 @@ export class HudOverlay {
                 <span id="hero-gen-badge" style="font-size:10px;padding:2px 6px;border-radius:3px;background:rgba(56,189,248,0.15);color:#38bdf8;font-weight:700;">รุ่นที่ 1</span>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;font-size:11.5px;">
-                <span id="hero-stage-badge" style="color:#fbbf24;font-weight:600;">วัยทารก</span>
-                <span id="hero-age-text" style="color:#94a3b8;">1 / 60 ปี</span>
+                <span id="hero-stage-badge" style="color:#fbbf24;font-weight:600;">วัยรุ่น</span>
+                <span id="hero-age-text" style="color:#94a3b8;">14 / 60 ปี</span>
               </div>
               <div class="studio-bar-track" style="margin-top:5px;height:4px;">
-                <div class="studio-bar-fill" id="hero-age-bar" style="width:2%;background:#fbbf24;"></div>
+                <div class="studio-bar-fill" id="hero-age-bar" style="width:20%;background:#fbbf24;"></div>
               </div>
             </div>
           </div>
@@ -558,15 +654,15 @@ export class HudOverlay {
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;">
             <div style="padding:6px;border-radius:4px;background:rgba(15,23,42,0.65);border:1px solid rgba(148,163,184,0.12);text-align:center;">
               <div style="font-size:10px;color:#94a3b8;">STR (กำลัง)</div>
-              <div id="stat-str" style="font-size:14px;font-weight:700;color:#f87171;">5</div>
+              <div id="stat-str" style="font-size:14px;font-weight:700;color:#f87171;">6</div>
             </div>
             <div style="padding:6px;border-radius:4px;background:rgba(15,23,42,0.65);border:1px solid rgba(148,163,184,0.12);text-align:center;">
               <div style="font-size:10px;color:#94a3b8;">INT (ปัญญา)</div>
-              <div id="stat-int" style="font-size:14px;font-weight:700;color:#c084fc;">5</div>
+              <div id="stat-int" style="font-size:14px;font-weight:700;color:#c084fc;">6</div>
             </div>
             <div style="padding:6px;border-radius:4px;background:rgba(15,23,42,0.65);border:1px solid rgba(148,163,184,0.12);text-align:center;">
               <div style="font-size:10px;color:#94a3b8;">AGI (ว่องไว)</div>
-              <div id="stat-agi" style="font-size:14px;font-weight:700;color:#34d399;">5</div>
+              <div id="stat-agi" style="font-size:14px;font-weight:700;color:#34d399;">6</div>
             </div>
           </div>
           <div id="hero-traits-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;"></div>
@@ -575,8 +671,8 @@ export class HudOverlay {
           <div id="utility-scores" style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;"></div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <button class="studio-btn gold" id="btn-open-custom">ปรับแต่งสายเลือด</button>
-            <button class="studio-btn" id="btn-next-heir">สืบทอดทายาทรุ่นต่อไป</button>
+            <button class="studio-btn gold" id="btn-open-custom">ตั้งค่าผู้บุกเบิก / โลก</button>
+            <button class="studio-btn" id="btn-next-heir">เลือกทายาทสืบทอด ▸</button>
           </div>
         </div>
 
@@ -731,78 +827,333 @@ export class HudOverlay {
       weatherRow.appendChild(btn);
     }
 
-    this.buildCustomizationModal();
+    this.buildGenesisModal();
+    this.buildHeirSuccessionModal();
+    this.buildWorldEndModal();
     this.bindEvents();
   }
 
-  private buildCustomizationModal(): void {
+  /**
+   * 1) PRE-GAME CHARACTER & WORLD CREATION MODAL (ปฐมกาลแห่งโมริมาร์)
+   */
+  private buildGenesisModal(): void {
     this.modalBackdropEl = document.createElement('div');
     this.modalBackdropEl.style.cssText =
-      'display:none;position:fixed;inset:0;background:rgba(5,8,14,0.78);backdrop-filter:blur(6px);z-index:100;align-items:center;justify-content:center;pointer-events:auto;';
+      'display:none;position:fixed;inset:0;background:rgba(5,8,14,0.84);backdrop-filter:blur(8px);z-index:100;align-items:center;justify-content:center;pointer-events:auto;padding:16px;';
     this.modalBackdropEl.innerHTML = `
-      <div class="studio-glass" style="width:440px;max-width:94vw;border-radius:8px;padding:18px;border:1px solid rgba(212,175,106,0.35);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="font-size:15px;font-weight:700;color:#f8fafc;">พันธุกรรมและสายเลือดผู้บุกเบิก</span>
-          <button class="studio-btn" id="btn-close-modal">✕</button>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div class="studio-glass" style="width:680px;max-width:96vw;max-height:92vh;overflow-y:auto;border-radius:10px;padding:20px 22px;border:1px solid rgba(212,175,106,0.45);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;border-bottom:1px solid rgba(148,163,184,0.16);padding-bottom:10px;">
           <div>
-            <label style="font-size:11px;color:#94a3b8;">ชื่อตัวเอก</label>
-            <input id="inp-hero-name" type="text" value="${this.draftCustom.name}" maxlength="18" style="width:100%;margin-top:3px;padding:6px 8px;border-radius:4px;background:#0f172a;border:1px solid rgba(148,163,184,0.3);color:#f8fafc;font-family:inherit;font-size:12px;" />
+            <div style="font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:#fbbf24;font-weight:700;">GENESIS OF MORIMAR • COZY REALISTIC 2.5D</div>
+            <div id="genesis-modal-title" style="font-size:17px;font-weight:700;color:#f8fafc;margin-top:2px;">สร้างตัวละครผู้บุกเบิกและกำหนดอายุขัยของโลก</div>
           </div>
+          <button class="studio-btn" id="btn-close-modal" title="ปิดหน้าต่าง">✕</button>
+        </div>
+
+        <!-- TOP ROW: LIVE PORTRAIT + NAME/CLAN + STARTING AGE -->
+        <div style="display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center;margin-bottom:14px;padding:12px;border-radius:8px;background:rgba(15,23,42,0.72);border:1px solid rgba(212,175,106,0.24);">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+            <div style="width:78px;height:78px;border-radius:8px;background:rgba(9,13,22,0.95);border:1px solid rgba(245,158,11,0.45);display:flex;align-items:center;justify-content:center;">
+              <canvas id="modal-founder-portrait" width="70" height="70" style="width:68px;height:68px;"></canvas>
+            </div>
+            <button type="button" class="studio-btn" id="btn-random-custom" style="width:100%;font-size:10.5px;padding:3px 6px;">🎲 สุ่มตัวละคร</button>
+          </div>
+
           <div>
-            <label style="font-size:11px;color:#94a3b8;">นามตระกูล</label>
-            <input id="inp-clan-name" type="text" value="${this.draftCustom.clanName}" maxlength="22" style="width:100%;margin-top:3px;padding:6px 8px;border-radius:4px;background:#0f172a;border:1px solid rgba(148,163,184,0.3);color:#f8fafc;font-family:inherit;font-size:12px;" />
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+              <div>
+                <label style="font-size:11px;color:#94a3b8;font-weight:600;">ชื่อผู้บุกเบิกตระกูล (Founder Name)</label>
+                <input id="inp-hero-name" type="text" value="${this.draftCustom.name}" maxlength="18" style="width:100%;margin-top:4px;padding:7px 10px;border-radius:5px;background:#090d16;border:1px solid rgba(148,163,184,0.32);color:#f8fafc;font-family:inherit;font-size:12.5px;font-weight:600;" />
+              </div>
+              <div>
+                <label style="font-size:11px;color:#94a3b8;font-weight:600;">นามตระกูล (Dynasty Clan)</label>
+                <input id="inp-clan-name" type="text" value="${this.draftCustom.clanName}" maxlength="22" style="width:100%;margin-top:4px;padding:7px 10px;border-radius:5px;background:#090d16;border:1px solid rgba(148,163,184,0.32);color:#f8fafc;font-family:inherit;font-size:12.5px;font-weight:600;" />
+              </div>
+            </div>
+
+            <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:5px;">ช่วงวัยเริ่มต้นของตัวเอก (สัมพันธ์กับรูปลักษณ์และวิธีคิด)</div>
+            <div id="starting-age-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;"></div>
           </div>
         </div>
 
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:6px;">
-          <span style="color:#94a3b8;">จัดสรรแต้มพรสวรรค์เริ่มต้น</span>
-          <span id="modal-points-left" style="color:#fbbf24;font-weight:700;">แต้มคงเหลือ: 3</span>
+        <!-- STATS + CLOAK -->
+        <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:12px;margin-bottom:14px;">
+          <div style="padding:10px 12px;border-radius:7px;background:rgba(15,23,42,0.65);border:1px solid rgba(148,163,184,0.16);">
+            <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:8px;">
+              <span style="color:#cbd5e1;font-weight:700;">ค่าสถานะเริ่มต้น (สืบทอดสู่ลูกหลาน)</span>
+              <span id="modal-points-left" style="color:#fbbf24;font-weight:700;">แต้มคงเหลือ: 0</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+              <div style="padding:7px;border-radius:5px;background:rgba(9,13,22,0.85);text-align:center;">
+                <div style="font-size:10.5px;color:#f87171;font-weight:700;">STR (กำลัง/ก่อสร้าง)</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;">
+                  <button class="studio-btn" data-stat="str" data-dir="-1">−</button>
+                  <span id="draft-str" style="font-size:14px;font-weight:700;">6</span>
+                  <button class="studio-btn" data-stat="str" data-dir="1">+</button>
+                </div>
+              </div>
+              <div style="padding:7px;border-radius:5px;background:rgba(9,13,22,0.85);text-align:center;">
+                <div style="font-size:10.5px;color:#c084fc;font-weight:700;">INT (ปัญญา/วิจัยยุค)</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;">
+                  <button class="studio-btn" data-stat="int" data-dir="-1">−</button>
+                  <span id="draft-int" style="font-size:14px;font-weight:700;">6</span>
+                  <button class="studio-btn" data-stat="int" data-dir="1">+</button>
+                </div>
+              </div>
+              <div style="padding:7px;border-radius:5px;background:rgba(9,13,22,0.85);text-align:center;">
+                <div style="font-size:10.5px;color:#34d399;font-weight:700;">AGI (ว่องไว/สำรวจ)</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;">
+                  <button class="studio-btn" data-stat="agi" data-dir="-1">−</button>
+                  <span id="draft-agi" style="font-size:14px;font-weight:700;">6</span>
+                  <button class="studio-btn" data-stat="agi" data-dir="1">+</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:10px 12px;border-radius:7px;background:rgba(15,23,42,0.65);border:1px solid rgba(148,163,184,0.16);display:flex;flex-direction:column;justify-content:space-between;">
+            <div>
+              <div style="font-size:11.5px;color:#cbd5e1;font-weight:700;margin-bottom:6px;">สีอาภรณ์ประจำตระกูล</div>
+              <div id="cloak-swatches" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+            </div>
+            <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;">
+              ทายาททุกรุ่นจะสืบทอดตราประจำตระกูลและโบนัสค่าสถานะจากบรรพบุรุษ
+            </div>
+          </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
-          <div style="padding:8px;border-radius:4px;background:rgba(15,23,42,0.8);text-align:center;">
-            <div style="font-size:11px;color:#f87171;font-weight:700;">STR (กำลัง)</div>
-            <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;">
-              <button class="studio-btn" data-stat="str" data-dir="-1">−</button>
-              <span id="draft-str" style="font-size:14px;font-weight:700;">5</span>
-              <button class="studio-btn" data-stat="str" data-dir="1">+</button>
-            </div>
-          </div>
-          <div style="padding:8px;border-radius:4px;background:rgba(15,23,42,0.8);text-align:center;">
-            <div style="font-size:11px;color:#c084fc;font-weight:700;">INT (ปัญญา)</div>
-            <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;">
-              <button class="studio-btn" data-stat="int" data-dir="-1">−</button>
-              <span id="draft-int" style="font-size:14px;font-weight:700;">5</span>
-              <button class="studio-btn" data-stat="int" data-dir="1">+</button>
-            </div>
-          </div>
-          <div style="padding:8px;border-radius:4px;background:rgba(15,23,42,0.8);text-align:center;">
-            <div style="font-size:11px;color:#34d399;font-weight:700;">AGI (ว่องไว)</div>
-            <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;">
-              <button class="studio-btn" data-stat="agi" data-dir="-1">−</button>
-              <span id="draft-agi" style="font-size:14px;font-weight:700;">5</span>
-              <button class="studio-btn" data-stat="agi" data-dir="1">+</button>
-            </div>
-          </div>
+        <!-- TRAITS -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11.5px;color:#cbd5e1;font-weight:700;margin-bottom:6px;">อุปนิสัยและพรสวรรค์ติดตัว (เลือกได้สูงสุด 2 อย่าง)</div>
+          <div id="traits-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;"></div>
         </div>
 
-        <div style="font-size:11.5px;color:#94a3b8;margin-bottom:6px;">สีชุดประจำตระกูล (แสดงผลบนตัวละครทุกยุค)</div>
-        <div id="cloak-swatches" style="display:flex;gap:8px;margin-bottom:12px;"></div>
+        <!-- WORLD LIFESPAN & CALAMITY SETTINGS -->
+        <div style="padding:12px;border-radius:8px;background:rgba(15,23,42,0.75);border:1px solid rgba(56,189,248,0.28);margin-bottom:16px;">
+          <div style="font-size:12px;font-weight:700;color:#7dd3fc;margin-bottom:8px;">
+            🌍 กำหนดอายุขัยของโลก (World Lifespan & Eschaton) — เล่นสืบทอดทายาทได้จนกว่าโลกจะดับสูญ
+          </div>
+          <div id="world-lifespan-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;"></div>
 
-        <div style="font-size:11.5px;color:#94a3b8;margin-bottom:6px;">อุปนิสัยประจำตัว (เลือกได้สูงสุด 2 อย่าง)</div>
-        <div id="traits-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px;"></div>
+          <div style="font-size:11px;color:#94a3b8;font-weight:600;margin-bottom:5px;">ความรุนแรงของฤดูกาลและภัยพิบัติธรรมชาติ</div>
+          <div id="calamity-mode-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;"></div>
+        </div>
 
-        <div style="display:flex;justify-content:flex-end;gap:8px;">
-          <button class="studio-btn" id="btn-random-custom">สุ่มสายเลือด</button>
-          <button class="studio-btn gold" id="btn-apply-custom">จุติตัวเอกลงสู่ทวีป</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <span style="font-size:11px;color:#94a3b8;">เมื่อตัวเอกสิ้นอายุขัย (60 ปี) ระบบจะเปิดให้คุณเลือกทายาทรุ่นต่อไปเพื่อเล่นต่อในโลกเดิม</span>
+          <button class="studio-btn primary-cta" id="btn-apply-custom">เริ่มต้นปฐมกาลแห่งชีวิต — เข้าสู่โลกจำลอง ▸</button>
         </div>
       </div>
     `;
     this.root.appendChild(this.modalBackdropEl);
     this.renderModalInternals();
+  }
+
+  /**
+   * 2) INTERACTIVE DYNASTY HEIR SUCCESSION MODAL (พิธีสืบทอดสายเลือดตระกูลเมื่อสิ้นอายุขัย)
+   */
+  private buildHeirSuccessionModal(): void {
+    this.heirModalBackdropEl = document.createElement('div');
+    this.heirModalBackdropEl.style.cssText =
+      'display:none;position:fixed;inset:0;background:rgba(5,8,14,0.85);backdrop-filter:blur(8px);z-index:110;align-items:center;justify-content:center;pointer-events:auto;padding:16px;';
+    this.heirModalBackdropEl.innerHTML = `
+      <div class="studio-glass" style="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto;border-radius:10px;padding:22px;border:1px solid rgba(245,158,11,0.5);">
+        <div style="text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid rgba(148,163,184,0.18);">
+          <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:#fbbf24;font-weight:700;">DYNASTY SUCCESSION • พิธีสืบทอดสายเลือดตระกูล</div>
+          <div id="heir-modal-headline" style="font-size:18px;font-weight:700;color:#f8fafc;margin-top:4px;">บรรพชนสิ้นอายุขัยตามกาลเวลา — โปรดเลือกทายาทผู้สืบทอดเจตนารมณ์</div>
+          <div id="heir-modal-subline" style="font-size:12px;color:#cbd5e1;margin-top:4px;"></div>
+        </div>
+
+        <div id="heir-candidates-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;"></div>
+
+        <div style="text-align:center;font-size:11px;color:#94a3b8;">
+          ทายาทที่ได้รับเลือกจะก้าวขึ้นมาเป็นตัวเอกคนใหม่ของตระกูล สานต่ออาณาจักร ยุคสมัย และความทรงจำทั้งหมดในโลกใบเดิมจนกว่าโลกจะถึงกาลอวสาน
+        </div>
+      </div>
+    `;
+    this.root.appendChild(this.heirModalBackdropEl);
+  }
+
+  /**
+   * 3) WORLD ESCHATON / END OF WORLD SUMMARY MODAL (กาลอวสานแห่งโลก)
+   */
+  private buildWorldEndModal(): void {
+    this.worldEndModalBackdropEl = document.createElement('div');
+    this.worldEndModalBackdropEl.style.cssText =
+      'display:none;position:fixed;inset:0;background:rgba(5,8,14,0.88);backdrop-filter:blur(10px);z-index:120;align-items:center;justify-content:center;pointer-events:auto;padding:16px;';
+    this.worldEndModalBackdropEl.innerHTML = `
+      <div class="studio-glass" style="width:580px;max-width:95vw;border-radius:10px;padding:24px;border:1px solid rgba(248,113,113,0.55);text-align:center;">
+        <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#f87171;font-weight:700;">WORLD ESCHATON • กาลอวสานแห่งทวีปโมริมาร์</div>
+        <div style="font-size:20px;font-weight:700;color:#f8fafc;margin-top:6px;">โลกใบนี้เดินทางมาถึงวาระสุดท้ายแห่งยุคสมัยแล้ว</div>
+        <div id="world-end-desc" style="font-size:12.5px;color:#cbd5e1;margin-top:8px;line-height:1.6;"></div>
+
+        <div id="world-end-stats-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:18px 0;text-align:left;"></div>
+
+        <div style="display:flex;justify-content:center;gap:12px;margin-top:16px;">
+          <button class="studio-btn gold" id="btn-extend-world-life" style="padding:9px 16px;font-size:12.5px;">
+            ✨ ประทานพรต่ออายุขัยโลก +200 ปี (เล่นต่อในโลกเดิม)
+          </button>
+          <button class="studio-btn primary-cta" id="btn-world-end-new-genesis">
+            🌱 กำเนิดจักรวาลและตระกูลใหม่ (New World Genesis)
+          </button>
+        </div>
+      </div>
+    `;
+    this.root.appendChild(this.worldEndModalBackdropEl);
+  }
+
+  public openGenesisModal(isInitialGenesis = false): void {
+    this.isInitialGenesisMode = isInitialGenesis;
+    const closeBtn = this.modalBackdropEl.querySelector('#btn-close-modal') as HTMLElement;
+    const titleEl = this.modalBackdropEl.querySelector('#genesis-modal-title') as HTMLElement;
+    const applyBtn = this.modalBackdropEl.querySelector('#btn-apply-custom') as HTMLElement;
+
+    if (isInitialGenesis) {
+      closeBtn.style.display = 'none';
+      titleEl.textContent = 'ปฐมกาลแห่งโมริมาร์ — สร้างตัวละครผู้บุกเบิกและกำหนดอายุขัยของโลก';
+      applyBtn.textContent = 'เริ่มต้นปฐมกาลแห่งชีวิต — เข้าสู่โลกจำลอง ▸';
+    } else {
+      closeBtn.style.display = 'inline-flex';
+      titleEl.textContent = 'ปรับแต่งสายเลือดผู้บุกเบิกและชะตาของโลก';
+      applyBtn.textContent = 'บันทึกและจุติตัวเอกลงสู่ทวีป ▸';
+    }
+
+    this.modalBackdropEl.style.display = 'flex';
+    this.renderModalInternals();
+  }
+
+  public openHeirSuccessionModal(
+    candidates: HeirCandidate[],
+    lateHero: HeroStatusSnapshot
+  ): void {
+    const headline = this.heirModalBackdropEl.querySelector('#heir-modal-headline') as HTMLElement;
+    const subline = this.heirModalBackdropEl.querySelector('#heir-modal-subline') as HTMLElement;
+    const grid = this.heirModalBackdropEl.querySelector('#heir-candidates-grid') as HTMLElement;
+
+    headline.textContent = `${lateHero.name} ${lateHero.clanName} (รุ่นที่ ${lateHero.generation}) สิ้นอายุขัยในวัย ${lateHero.age} ปี`;
+    subline.textContent = `กรุณาเลือก 1 ใน 3 ทายาทสายเลือดตระกูล เพื่อรับช่วงต่อในรุ่นที่ ${
+      lateHero.generation + 1
+    } (อายุโลกปัจจุบัน: ปีที่ ${lateHero.worldYear} / ${
+      lateHero.maxWorldYears > 0 ? lateHero.maxWorldYears : '∞'
+    })`;
+
+    grid.innerHTML = candidates
+      .map((c, idx) => {
+        const traitBadges = c.traitIds
+          .map((tid) => {
+            const found = this.traits.find((t) => t.id === tid);
+            return found
+              ? `<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.35);color:#fcd34d;">${found.icon} ${found.name}</span>`
+              : '';
+          })
+          .join('');
+
+        return `
+          <div class="heir-card">
+            <div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <div style="width:54px;height:54px;border-radius:6px;background:#090d16;border:1px solid rgba(245,158,11,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <canvas class="heir-portrait-canvas" data-stage="${
+                    c.startingAge <= 12 ? 'child' : 'teen'
+                  }" width="48" height="48" style="width:46px;height:46px;"></canvas>
+                </div>
+                <div>
+                  <div style="font-size:14px;font-weight:700;color:#f8fafc;">${c.name} ${lateHero.clanName}</div>
+                  <div style="font-size:11px;color:#fbbf24;font-weight:600;">${c.archetypeTitle}</div>
+                  <div style="font-size:10.5px;color:#94a3b8;">ทายาทรุ่นที่ ${lateHero.generation + 1} • อายุ ${c.startingAge} ปี</div>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;text-align:center;">
+                <div style="padding:4px;border-radius:4px;background:rgba(9,13,22,0.85);">
+                  <div style="font-size:9.5px;color:#94a3b8;">STR</div>
+                  <div style="font-size:13px;font-weight:700;color:#f87171;">${c.str}</div>
+                </div>
+                <div style="padding:4px;border-radius:4px;background:rgba(9,13,22,0.85);">
+                  <div style="font-size:9.5px;color:#94a3b8;">INT</div>
+                  <div style="font-size:13px;font-weight:700;color:#c084fc;">${c.int}</div>
+                </div>
+                <div style="padding:4px;border-radius:4px;background:rgba(9,13,22,0.85);">
+                  <div style="font-size:9.5px;color:#94a3b8;">AGI</div>
+                  <div style="font-size:13px;font-weight:700;color:#34d399;">${c.agi}</div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">${traitBadges}</div>
+              <div style="font-size:11px;color:#cbd5e1;line-height:1.45;">${c.description}</div>
+            </div>
+
+            <button class="studio-btn primary-cta" data-choose-heir="${idx}" style="width:100%;justify-content:center;">
+              เล่นต่อในฐานะ "${c.name}" ▸
+            </button>
+          </div>
+        `;
+      })
+      .join('');
+
+    // Draw Cozy Realistic portraits on each candidate card
+    grid.querySelectorAll('.heir-portrait-canvas').forEach((canvasEl) => {
+      const cvs = canvasEl as HTMLCanvasElement;
+      const stage = cvs.dataset.stage || 'teen';
+      this.drawTextureToCanvas(`hero_${stage}_0`, cvs);
+    });
+
+    // Bind selection buttons
+    grid.querySelectorAll('[data-choose-heir]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number((btn as HTMLElement).dataset.chooseHeir);
+        const chosen = candidates[idx];
+        if (chosen) {
+          this.heirModalBackdropEl.style.display = 'none';
+          this.callbacks.onSelectHeir(chosen);
+        }
+      });
+    });
+
+    this.heirModalBackdropEl.style.display = 'flex';
+  }
+
+  public openWorldEndModal(snapshot: HeroStatusSnapshot): void {
+    const descEl = this.worldEndModalBackdropEl.querySelector('#world-end-desc') as HTMLElement;
+    const statsGrid = this.worldEndModalBackdropEl.querySelector(
+      '#world-end-stats-grid'
+    ) as HTMLElement;
+
+    descEl.textContent = `สายเลือดตระกูล "${snapshot.clanName}" ได้ยืนหยัดผ่านกาลเวลามาจนถึงปีที่ ${snapshot.worldYear} แห่งโลกโมริมาร์ บันทึกตำนานและอารยธรรมอันรุ่งโรจน์ไว้ในหน้าประวัติศาสตร์`;
+
+    statsGrid.innerHTML = `
+      <div style="padding:10px 12px;border-radius:6px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);">
+        <div style="font-size:10.5px;color:#94a3b8;">อายุขัยของโลกที่เดินทางมาถึง</div>
+        <div style="font-size:16px;font-weight:700;color:#38bdf8;margin-top:2px;">ปีที่ ${snapshot.worldYear} / ${snapshot.maxWorldYears}</div>
+      </div>
+      <div style="padding:10px 12px;border-radius:6px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);">
+        <div style="font-size:10.5px;color:#94a3b8;">จำนวนรุ่นตระกูลที่สืบทอด</div>
+        <div style="font-size:16px;font-weight:700;color:#fbbf24;margin-top:2px;">${snapshot.generation} รุ่นตระกูล</div>
+      </div>
+      <div style="padding:10px 12px;border-radius:6px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);">
+        <div style="font-size:10.5px;color:#94a3b8;">ยุคอารยธรรมสูงสุดที่บรรลุ</div>
+        <div style="font-size:15px;font-weight:700;color:#34d399;margin-top:2px;">${snapshot.kingdom.eraName}</div>
+      </div>
+      <div style="padding:10px 12px;border-radius:6px;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);">
+        <div style="font-size:10.5px;color:#94a3b8;">ภูมิปัญญาและประชากรอาณาจักร</div>
+        <div style="font-size:15px;font-weight:700;color:#c084fc;margin-top:2px;">Lore ${snapshot.loreExp} • ประชากร ${snapshot.kingdom.population} คน</div>
+      </div>
+    `;
+
+    this.worldEndModalBackdropEl.style.display = 'flex';
+  }
+
+  private drawTextureToCanvas(texKey: string, canvas: HTMLCanvasElement): void {
+    if (!this.scene.textures.exists(texKey)) return;
+    const tex = this.scene.textures.get(texKey);
+    const sourceImage = tex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    if (!sourceImage) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
   }
 
   private renderModalInternals(): void {
@@ -821,10 +1172,63 @@ export class HudOverlay {
       this.draftCustom.agi
     );
 
+    // Render live Cozy Realistic founder portrait
+    const startOpt =
+      STARTING_AGE_OPTIONS.find((o) => o.age === (this.draftCustom.startingAge ?? 14)) ??
+      STARTING_AGE_OPTIONS[2];
+    const founderCanvas = this.modalBackdropEl.querySelector(
+      '#modal-founder-portrait'
+    ) as HTMLCanvasElement | null;
+    if (founderCanvas) {
+      this.drawTextureToCanvas(`hero_${startOpt.stageId}_0`, founderCanvas);
+    }
+
+    // Starting Age Options
+    const ageGrid = this.modalBackdropEl.querySelector('#starting-age-grid') as HTMLElement;
+    if (ageGrid) {
+      ageGrid.innerHTML = STARTING_AGE_OPTIONS.map((opt) => {
+        const active = (this.draftCustom.startingAge ?? 14) === opt.age;
+        return `
+          <div class="studio-choice-card ${active ? 'active' : ''}" data-start-age="${opt.age}">
+            <div style="font-size:11.5px;font-weight:700;color:${active ? '#fbbf24' : '#f8fafc'};">${opt.label}</div>
+            <div style="font-size:9.5px;color:#94a3b8;margin-top:2px;">${opt.desc}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // World Lifespan Options
+    const worldGrid = this.modalBackdropEl.querySelector('#world-lifespan-grid') as HTMLElement;
+    if (worldGrid) {
+      worldGrid.innerHTML = WORLD_LIFESPAN_OPTIONS.map((opt) => {
+        const active = (this.draftCustom.maxWorldYears ?? 300) === opt.years;
+        return `
+          <div class="studio-choice-card ${active ? 'active' : ''}" data-world-years="${opt.years}">
+            <div style="font-size:12px;font-weight:700;color:${active ? '#38bdf8' : '#f8fafc'};">${opt.label}</div>
+            <div style="font-size:9.5px;color:#94a3b8;margin-top:2px;">${opt.sub}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Calamity Options
+    const calGrid = this.modalBackdropEl.querySelector('#calamity-mode-grid') as HTMLElement;
+    if (calGrid) {
+      calGrid.innerHTML = CALAMITY_OPTIONS.map((opt) => {
+        const active = (this.draftCustom.calamityMode ?? 'balanced') === opt.id;
+        return `
+          <div class="studio-choice-card ${active ? 'active' : ''}" data-calamity="${opt.id}">
+            <div style="font-size:11.5px;font-weight:700;color:${active ? '#fbbf24' : '#f8fafc'};">${opt.label}</div>
+            <div style="font-size:9.5px;color:#94a3b8;margin-top:2px;">${opt.desc}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
     const swatchRow = this.modalBackdropEl.querySelector('#cloak-swatches') as HTMLElement;
     swatchRow.innerHTML = CLOAK_PRESETS.map(
       (c) => `
-      <button type="button" data-cloak="${c.hex}" title="${c.name}" style="width:26px;height:26px;border-radius:50%;background:${c.hex};border:2px solid ${
+      <button type="button" data-cloak="${c.hex}" title="${c.name}" style="width:28px;height:28px;border-radius:50%;background:${c.hex};border:2px solid ${
         this.draftCustom.cloakColor === c.hex ? '#fbbf24' : 'rgba(255,255,255,0.2)'
       };cursor:pointer;"></button>
     `
@@ -835,17 +1239,19 @@ export class HudOverlay {
       .map((t) => {
         const active = this.draftCustom.traitIds.includes(t.id);
         return `
-        <div data-trait="${t.id}" style="padding:7px;border-radius:4px;border:1px solid ${
-          active ? '#f59e0b' : 'rgba(148,163,184,0.2)'
-        };background:${
-          active ? 'rgba(245,158,11,0.14)' : 'rgba(15,23,42,0.65)'
-        };cursor:pointer;">
+        <div class="studio-choice-card ${active ? 'active' : ''}" data-trait="${t.id}">
           <div style="font-size:11.5px;font-weight:700;color:#f8fafc;">${t.icon} ${t.name}</div>
           <div style="font-size:10px;color:#94a3b8;margin-top:2px;">${t.description}</div>
         </div>
       `;
       })
       .join('');
+  }
+
+  public setSpeedButtonsUI(speed: TimeSpeed): void {
+    this.root.querySelectorAll('[data-speed]').forEach((b) => {
+      b.classList.toggle('active', Number((b as HTMLElement).dataset.speed) === speed);
+    });
   }
 
   private bindEvents(): void {
@@ -886,9 +1292,7 @@ export class HudOverlay {
       btn.addEventListener('click', () => {
         const spd = Number((btn as HTMLElement).dataset.speed) as TimeSpeed;
         this.callbacks.onSpeedChange(spd);
-        this.root.querySelectorAll('[data-speed]').forEach((b) => {
-          b.classList.toggle('active', Number((b as HTMLElement).dataset.speed) === spd);
-        });
+        this.setSpeedButtonsUI(spd);
       });
     });
 
@@ -925,7 +1329,7 @@ export class HudOverlay {
 
     // Hero Tab Buttons
     this.root.querySelector('#btn-open-custom')?.addEventListener('click', () => {
-      this.modalBackdropEl.style.display = 'flex';
+      this.openGenesisModal(false);
     });
 
     this.root.querySelector('#btn-next-heir')?.addEventListener('click', () => {
@@ -1018,6 +1422,27 @@ export class HudOverlay {
         return;
       }
 
+      const startAgeCard = target.closest('[data-start-age]') as HTMLElement | null;
+      if (startAgeCard && startAgeCard.dataset.startAge) {
+        this.draftCustom.startingAge = Number(startAgeCard.dataset.startAge);
+        this.renderModalInternals();
+        return;
+      }
+
+      const worldYearsCard = target.closest('[data-world-years]') as HTMLElement | null;
+      if (worldYearsCard && worldYearsCard.dataset.worldYears !== undefined) {
+        this.draftCustom.maxWorldYears = Number(worldYearsCard.dataset.worldYears);
+        this.renderModalInternals();
+        return;
+      }
+
+      const calamityCard = target.closest('[data-calamity]') as HTMLElement | null;
+      if (calamityCard && calamityCard.dataset.calamity) {
+        this.draftCustom.calamityMode = calamityCard.dataset.calamity as CalamityMode;
+        this.renderModalInternals();
+        return;
+      }
+
       const cloakBtn = target.closest('[data-cloak]') as HTMLElement | null;
       if (cloakBtn && cloakBtn.dataset.cloak) {
         this.draftCustom.cloakColor = cloakBtn.dataset.cloak;
@@ -1040,8 +1465,8 @@ export class HudOverlay {
     });
 
     this.modalBackdropEl.querySelector('#btn-random-custom')?.addEventListener('click', () => {
-      const names = ['เอเรน', 'คีร่า', 'เซธ', 'ไลล่า', 'อารอน', 'เฟรย่า', 'เรเวน'];
-      const clans = ['แห่งโมริมาร์', 'ผู้พิทักษ์พงไพร', 'สายเลือดดารา', 'แห่งหุบเขาสีคราม'];
+      const names = ['เอเรน', 'คีร่า', 'เซธ', 'ไลล่า', 'อารอน', 'เฟรย่า', 'เรเวน', 'เอลาร่า', 'อัลเลน'];
+      const clans = ['แห่งโมริมาร์', 'ผู้พิทักษ์พงไพร', 'สายเลือดดารา', 'แห่งหุบเขาสีคราม', 'ผู้บุกเบิกอรุณรุ่ง'];
       this.draftCustom.name = names[Math.floor(Math.random() * names.length)];
       this.draftCustom.clanName = clans[Math.floor(Math.random() * clans.length)];
       (this.modalBackdropEl.querySelector('#inp-hero-name') as HTMLInputElement).value =
@@ -1050,6 +1475,15 @@ export class HudOverlay {
         this.draftCustom.clanName;
       this.draftCustom.cloakColor =
         CLOAK_PRESETS[Math.floor(Math.random() * CLOAK_PRESETS.length)].hex;
+
+      // Random balanced stats totaling 18
+      const s = Phaser.Math.Between(4, 8);
+      const i = Phaser.Math.Between(4, Math.min(8, 18 - s - 4));
+      const a = 18 - s - i;
+      this.draftCustom.str = s;
+      this.draftCustom.int = i;
+      this.draftCustom.agi = a;
+
       this.renderModalInternals();
     });
 
@@ -1059,8 +1493,23 @@ export class HudOverlay {
       this.draftCustom.name = nameInp.value.trim() || 'เอเรน';
       this.draftCustom.clanName = clanInp.value.trim() || 'แห่งโมริมาร์';
       this.modalBackdropEl.style.display = 'none';
-      this.callbacks.onApplyHeroCustomization({ ...this.draftCustom });
+      this.callbacks.onApplyHeroCustomization({ ...this.draftCustom }, this.isInitialGenesisMode);
     });
+
+    // World End Modal Events
+    this.worldEndModalBackdropEl
+      .querySelector('#btn-extend-world-life')
+      ?.addEventListener('click', () => {
+        this.worldEndModalBackdropEl.style.display = 'none';
+        this.callbacks.onExtendWorldLifespan(200);
+      });
+
+    this.worldEndModalBackdropEl
+      .querySelector('#btn-world-end-new-genesis')
+      ?.addEventListener('click', () => {
+        this.worldEndModalBackdropEl.style.display = 'none';
+        this.callbacks.onRegenerateWorld();
+      });
   }
 
   public setFollowState(following: boolean): void {
@@ -1074,18 +1523,8 @@ export class HudOverlay {
     if (this.lastPortraitTextureKey === cacheSignature) return;
     if (!this.scene.textures.exists(texKey)) return;
 
-    const tex = this.scene.textures.get(texKey);
-    const sourceImage = tex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
-    if (!sourceImage) return;
-
-    const ctx = this.portraitCanvas.getContext('2d');
-    if (!ctx) return;
-
     this.lastPortraitTextureKey = cacheSignature;
-    ctx.clearRect(0, 0, 56, 56);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(sourceImage, 0, 0, 56, 56);
+    this.drawTextureToCanvas(texKey, this.portraitCanvas);
   }
 
   public updateHeroStatus(
@@ -1099,6 +1538,10 @@ export class HudOverlay {
 
     // 1. Update Top Ribbon
     this.eraBadgeNameEl.textContent = k.eraName;
+    const maxWorldStr =
+      snapshot.maxWorldYears > 0 ? `${snapshot.maxWorldYears}` : '∞ นิรันดร์กาล';
+    this.worldAgeLabelEl.textContent = `อายุโลก: ปีที่ ${snapshot.worldYear} / ${maxWorldStr}`;
+
     this.resWoodEl.textContent = String(k.wood);
     this.resStoneEl.textContent = String(k.stone);
     this.resFoodEl.textContent = String(k.food);

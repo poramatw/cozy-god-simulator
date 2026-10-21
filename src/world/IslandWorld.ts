@@ -1,10 +1,7 @@
 import Phaser from 'phaser';
 import { createNoise2D } from 'simplex-noise';
-import {
-  bakeBuildingsForEra,
-  bakeCharacterSpritesForEra,
-  EraId,
-} from '../core/ProceduralArtEngine';
+import { EraId } from '../core/ProceduralArtEngine';
+import { applyCozyRealisticEraBuildings } from '../core/SpriteSheetProcessor';
 import {
   BiomeConfig,
   ResourceType,
@@ -112,11 +109,10 @@ export class IslandWorld {
     return this.currentEra;
   }
 
-  public setWorldEra(era: EraId, cloakColor = '#3b7a57'): void {
+  public setWorldEra(era: EraId, _cloakColor = '#3b7a57'): void {
     if (this.currentEra === era) return;
     this.currentEra = era;
-    bakeBuildingsForEra(this.scene, era);
-    bakeCharacterSpritesForEra(this.scene, era, cloakColor);
+    applyCozyRealisticEraBuildings(this.scene, era);
 
     const noiseDetail = createNoise2D(createSeededRandom(this.seed + 202));
     this.paintSmoothPainterlyTerrain(this.seed, noiseDetail);
@@ -344,58 +340,56 @@ export class IslandWorld {
         const n = noiseDetail(lx * 0.06, ly * 0.06); // -1..1
         const micro = noiseDetail(lx * 0.25, ly * 0.25) * 4;
 
-        let r = 20;
-        let g = 52;
-        let b = 82;
+        let r = 10;
+        let g = 18;
+        let b = 30;
 
         if (tile.biome.id === 'deep_water') {
-          r = 22 + n * 5;
-          g = 56 + n * 8;
-          b = 88 + n * 12;
+          r = 8 + n * 4;
+          g = 16 + n * 6;
+          b = 29 + n * 9;
         } else if (tile.biome.id === 'shallow_water') {
-          // Natural clear coastal & river turquoise water
-          r = 46 + n * 10;
-          g = 128 + n * 18;
-          b = 156 + n * 20;
+          // Crisp deep-teal stream matching Cozy Realistic reference
+          r = 22 + n * 10;
+          g = 112 + n * 22;
+          b = 142 + n * 24;
         } else if (tile.isPath) {
-          // Era-evolving road surface!
+          // Era-evolving road surface in Cozy Realistic palette!
           if (this.currentEra === 'stone') {
-            r = 124 + n * 10 + micro;
-            g = 98 + n * 8 + micro;
-            b = 72 + n * 6 + micro;
+            r = 68 + n * 9 + micro;
+            g = 56 + n * 7 + micro;
+            b = 44 + n * 6 + micro;
           } else if (this.currentEra === 'bronze') {
-            r = 138 + n * 9 + micro;
-            g = 118 + n * 8 + micro;
-            b = 94 + n * 7 + micro;
+            r = 78 + n * 10 + micro;
+            g = 66 + n * 8 + micro;
+            b = 52 + n * 7 + micro;
           } else if (this.currentEra === 'medieval') {
-            r = 118 + n * 11 + micro;
-            g = 122 + n * 11 + micro;
-            b = 128 + n * 11 + micro;
+            r = 74 + n * 11 + micro;
+            g = 72 + n * 10 + micro;
+            b = 70 + n * 9 + micro;
           } else if (this.currentEra === 'modern') {
-            r = 58 + n * 4 + micro * 0.5;
-            g = 64 + n * 4 + micro * 0.5;
-            b = 74 + n * 4 + micro * 0.5;
+            r = 46 + n * 4 + micro * 0.5;
+            g = 50 + n * 4 + micro * 0.5;
+            b = 58 + n * 4 + micro * 0.5;
           } else {
-            // Future cyber-grid road
-            r = 28 + n * 4;
-            g = 46 + n * 8;
-            b = 72 + n * 12;
+            // Future Solarpunk / Arcology illuminated pathway
+            r = 26 + n * 5;
+            g = 54 + n * 9;
+            b = 74 + n * 12;
           }
         } else if (tile.biome.id === 'sand') {
-          // Warm natural beach sand
-          r = 194 + n * 12 + micro;
-          g = 170 + n * 10 + micro;
-          b = 126 + n * 8 + micro;
+          r = 68 + n * 9 + micro;
+          g = 60 + n * 8 + micro;
+          b = 49 + n * 6 + micro;
         } else if (tile.biome.id === 'grass') {
-          // Sunlit natural meadow grass
-          r = 74 + n * 11 + micro;
-          g = 122 + n * 14 + micro;
-          b = 66 + n * 9 + micro;
+          r = 34 + n * 9 + micro;
+          g = 52 + n * 12 + micro;
+          b = 36 + n * 7 + micro;
         } else {
-          // Rich woodland forest floor
-          r = 48 + n * 8 + micro;
-          g = 86 + n * 11 + micro;
-          b = 48 + n * 8 + micro;
+          // Deep crisp woodland moss
+          r = 21 + n * 7 + micro;
+          g = 36 + n * 10 + micro;
+          b = 28 + n * 7 + micro;
         }
 
         const idx = (ly * lowW + lx) * 4;

@@ -77,9 +77,27 @@ export interface TraitConfig {
   hungerRestoreMultiplier: number;
 }
 
+export type CalamityMode = 'cozy' | 'balanced' | 'cataclysm';
+
 export interface HeroCustomization {
   name: string;
   clanName: string;
+  str: number;
+  int: number;
+  agi: number;
+  traitIds: string[];
+  cloakColor: string;
+  startingAge?: number;
+  maxWorldYears?: number; // 0 = Endless, or 150 / 300 / 600
+  calamityMode?: CalamityMode;
+}
+
+export interface HeirCandidate {
+  id: string;
+  name: string;
+  archetypeTitle: string;
+  description: string;
+  startingAge: number;
   str: number;
   int: number;
   agi: number;
@@ -358,6 +376,8 @@ export interface HeroStatusSnapshot {
   napsTaken: number;
   tilesExplored: number;
   generation: number;
+  worldYear: number;
+  maxWorldYears: number;
   activeWeather: WeatherConfig;
   kingdom: KingdomSnapshot;
   deepThought: DeepThoughtOutput;

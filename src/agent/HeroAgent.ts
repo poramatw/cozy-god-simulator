@@ -3,6 +3,7 @@ import {
   ActionId,
   AgentConfig,
   ChronicleEntry,
+  HeirCandidate,
   HeroCustomization,
   HeroStatusSnapshot,
   LifeStageConfig,
@@ -48,6 +49,9 @@ export class HeroAgent {
   private maxHealth: number;
   private baseAge: number;
   private currentAge: number;
+  private worldYear = 1;
+  private maxWorldYears = 300;
+  private isAwaitingSuccession = false;
   private dayOfYear = 1;
   private currentClockStr = '20:30';
   private isNight = true;
@@ -81,6 +85,17 @@ export class HeroAgent {
   private activeFloatingTexts: { txt: Phaser.GameObjects.Text; offsetY: number }[] = [];
 
   private onChronicleLog?: (entry: Omit<ChronicleEntry, 'id'>) => void;
+  private onHeirSuccessionRequired?: (
+    candidates: HeirCandidate[],
+    lateHero: {
+      name: string;
+      clanName: string;
+      generation: number;
+      age: number;
+      philosophyTitle: string;
+      buildingsBuilt: number;
+    }
+  ) => void;
 
   constructor(
     scene: Phaser.Scene,
@@ -89,7 +104,18 @@ export class HeroAgent {
     seasonSys: SeasonAndDisasterSystem,
     config: AgentConfig,
     allTraits: TraitConfig[],
-    onChronicleLog?: (entry: Omit<ChronicleEntry, 'id'>) => void
+    onChronicleLog?: (entry: Omit<ChronicleEntry, 'id'>) => void,
+    onHeirSuccessionRequired?: (
+      candidates: HeirCandidate[],
+      lateHero: {
+        name: string;
+        clanName: string;
+        generation: number;
+        age: number;
+        philosophyTitle: string;
+        buildingsBuilt: number;
+      }
+    ) => void
   ) {
     this.scene = scene;
     this.world = world;
@@ -100,6 +126,7 @@ export class HeroAgent {
     this.brain = new UtilityBrain(config);
     this.cognition = new DeepCognitionEngine();
     this.onChronicleLog = onChronicleLog;
+    this.onHeirSuccessionRequired = onHeirSuccessionRequired;
 
     this.name = config.defaultHeroName;
     this.clanName = config.defaultClanName;
@@ -176,7 +203,84 @@ export class HeroAgent {
     );
   }
 
+  public generateHeirCandidates(): HeirCandidate[] {
+    const nextGen = this.generation + 1;
+    const namesPool = [
+      ['อารอน', 'วาเลน', 'คีรอน'],
+      ['ไลร่า', 'เซเลส', 'เอลาร่า'],
+      ['เซธ', 'ฟินน์', 'เรเวน'],
+    ];
+    const cloakPool = ['#3b7a57', '#2563eb', '#b91c1c', '#6d28d9', '#d97706'];
+    const tIds = this.allTraits.map((t) => t.id);
+    const pickTraits = (i1: number, i2: number) => [
+      tIds[i1 % tIds.length] ?? 'fleet_footed',
+      tIds[i2 % tIds.length] ?? 'forest_child',
+    ];
+
+    return [
+      {
+        id: `heir_guardian_${nextGen}`,
+        name: namesPool[0][nextGen % 3],
+        archetypeTitle: 'สายผู้พิทักษ์แห่งปราการ (Guardian Heir)',
+        description:
+          'สืบทอดพละกำลังและความกล้าหาญ เด่นด้านการสกัดแร่หิน ตัดไม้ และปราบสัตว์ร้ายปกป้องเมือง',
+        startingAge: 14,
+        str: Math.min(15, this.str + 2),
+        int: Math.min(15, this.int + 1),
+        agi: Math.min(15, this.agi + 1),
+        traitIds: pickTraits(0, 2),
+        cloakColor: cloakPool[(nextGen + 1) % cloakPool.length],
+      },
+      {
+        id: `heir_scholar_${nextGen}`,
+        name: namesPool[1][nextGen % 3],
+        archetypeTitle: 'สายปราชญ์และสถาปนิก (Architect Scholar)',
+        description:
+          'เปี่ยมด้วยสติปัญญาและปรัชญา เร่งสั่งสมภูมิปัญญาเพื่อวิวัฒนาการโลกสู่ยุคสมัยใหม่ได้เร็วที่สุด',
+        startingAge: 14,
+        str: Math.min(15, this.str + 1),
+        int: Math.min(15, this.int + 2),
+        agi: Math.min(15, this.agi + 1),
+        traitIds: pickTraits(1, 3),
+        cloakColor: cloakPool[(nextGen + 2) % cloakPool.length],
+      },
+      {
+        id: `heir_pioneer_${nextGen}`,
+        name: namesPool[2][nextGen % 3],
+        archetypeTitle: 'สายนักบุกเบิกว่องไว (Swift Pioneer)',
+        description:
+          'เริ่มตั้งแต่วัยเยาว์ (7 ปี) มีความว่องไวสูง สำรวจแผนที่และเก็บเกี่ยวเสบียงอาหารได้อย่างรวดเร็ว',
+        startingAge: 7,
+        str: Math.min(15, this.str + 1),
+        int: Math.min(15, this.int + 1),
+        agi: Math.min(15, this.agi + 2),
+        traitIds: pickTraits(0, 1),
+        cloakColor: cloakPool[(nextGen + 3) % cloakPool.length],
+      },
+    ];
+  }
+
   public triggerNextGenerationHeir(): void {
+    if (this.isAwaitingSuccession) return;
+    const candidates = this.generateHeirCandidates();
+    if (this.onHeirSuccessionRequired) {
+      this.isAwaitingSuccession = true;
+      const domPhil = this.cognition.getDominantPhilosophy();
+      this.onHeirSuccessionRequired(candidates, {
+        name: this.name,
+        clanName: this.clanName,
+        generation: this.generation,
+        age: this.currentAge,
+        philosophyTitle: domPhil.name,
+        buildingsBuilt: this.buildingsCompleted,
+      });
+      return;
+    }
+    this.ascendChosenHeir(candidates[0]);
+  }
+
+  public ascendChosenHeir(heir: HeirCandidate): void {
+    this.isAwaitingSuccession = false;
     this.cognition.recordAncestralLegacy(
       this.generation,
       `${this.name} ${this.clanName}`,
@@ -185,24 +289,28 @@ export class HeroAgent {
     );
 
     this.generation++;
-    this.baseAge = 1;
-    this.currentAge = 1;
-    this.str += 1;
-    this.int += 1;
-    this.agi += 1;
+    this.name = heir.name.trim() || this.name;
+    this.baseAge = heir.startingAge;
+    this.currentAge = heir.startingAge;
+    this.str = heir.str;
+    this.int = heir.int;
+    this.agi = heir.agi;
+    this.cloakColor = heir.cloakColor;
+    this.activeTraits = this.allTraits.filter((t) => heir.traitIds.includes(t.id));
+    this.maxHealth = this.config.needs.health.max + (this.str - 5) * 6;
     this.health = this.maxHealth;
     this.hunger = this.config.needs.hunger.max;
     this.energy = this.config.needs.energy.max;
-    this.currentStage = this.resolveLifeStage(1);
+    this.currentStage = this.resolveLifeStage(this.currentAge);
     this.updateHeroSpriteTexture(`${this.getStageSpritePrefix()}_0`);
 
     this.cognition.recordEpisodicMemory({
       generation: this.generation,
       heroName: this.name,
-      age: 1,
+      age: this.currentAge,
       season: this.seasonSys.getSeasonMeta().id,
-      title: `การถือกำเนิดของทายาทรุ่นที่ ${this.generation}`,
-      reflection: `รับสืบทอดมรดกแห่ง ${this.clanName} ท่ามกลางสิ่งปลูกสร้างและคำสอนของบรรพบุรุษ`,
+      title: `พิธีสืบทอดสายเลือดสู่รุ่นที่ ${this.generation}: ${this.name}`,
+      reflection: `รับมอบเจตนารมณ์แห่ง ${this.clanName} เพื่อพัฒนาอารยธรรมต่อไปจนกว่าโลกจะถึงกาลอวสาน`,
       emotion: 'wisdom',
       importance: 10,
       tileX: this.tileX,
@@ -210,13 +318,14 @@ export class HeroAgent {
     });
 
     this.logEvent(
-      `🌟 สืบทอดมรดกสู่ทายาทรุ่นที่ ${this.generation} แห่ง ${this.clanName}! อาณาจักร สิ่งปลูกสร้าง และคัมภีร์บรรพบุรุษคงอยู่ครบถ้วน`,
+      `สืบทอดมรดกตระกูลสู่รุ่นที่ ${this.generation}: "${this.name} ${this.clanName}" (${heir.archetypeTitle})`,
       'milestone'
     );
-    this.spawnFloatingText(`🌟 ทายาทรุ่นที่ ${this.generation} (วัยทารก)`, '#8ef6ff');
+    this.spawnFloatingText(`ทายาทรุ่นที่ ${this.generation}: ${this.name}`, '#8ef6ff');
   }
 
-  public applyCustomization(custom: HeroCustomization, resetAgeToInfant = true): void {
+  public applyCustomization(custom: HeroCustomization, resetAge = true): void {
+    this.isAwaitingSuccession = false;
     this.name = custom.name.trim() || this.config.defaultHeroName;
     this.clanName = custom.clanName.trim() || this.config.defaultClanName;
     this.str = custom.str;
@@ -225,16 +334,16 @@ export class HeroAgent {
     this.cloakColor = custom.cloakColor;
     this.activeTraits = this.allTraits.filter((t) => custom.traitIds.includes(t.id));
     this.kingdom.setHeroCloakColor(this.cloakColor);
-    this.world.setWorldEra(this.world.getCurrentEra(), this.cloakColor);
 
     this.maxHealth = this.config.needs.health.max + (this.str - 5) * 6;
     this.health = this.maxHealth;
     this.hunger = this.config.needs.hunger.max;
     this.energy = this.config.needs.energy.max;
 
-    if (resetAgeToInfant) {
-      this.baseAge = this.config.initialAge;
-      this.currentAge = this.config.initialAge;
+    if (resetAge) {
+      const startAge = custom.startingAge ?? this.config.initialAge;
+      this.baseAge = startAge;
+      this.currentAge = startAge;
     }
 
     const nextStage = this.resolveLifeStage(this.currentAge);
@@ -244,10 +353,10 @@ export class HeroAgent {
     const traitNames =
       this.activeTraits.map((t) => t.name.split(' ')[0]).join(', ') || 'ไร้ลักษณะพิเศษ';
     this.logEvent(
-      `พรแห่งพระเจ้าประทานชีวิตให้ "${this.name} ${this.clanName}" (STR ${this.str} • INT ${this.int} • AGI ${this.agi} | นิสัย: ${traitNames})`,
+      `ปฐมกาลแห่งสายเลือด "${this.name} ${this.clanName}" เริ่มต้นที่อายุ ${this.currentAge} ปี (STR ${this.str} • INT ${this.int} • AGI ${this.agi} | นิสัย: ${traitNames})`,
       'milestone'
     );
-    this.spawnFloatingText('จุติร่างใหม่', '#ffd166');
+    this.spawnFloatingText(`เริ่มต้นตำนาน: ${this.name}`, '#ffd166');
   }
 
   private resolveLifeStage(age: number): LifeStageConfig {
@@ -310,11 +419,17 @@ export class HeroAgent {
     elapsedYears: number,
     dayOfYear: number,
     clockStr: string,
-    isNight: boolean
+    isNight: boolean,
+    worldYear = 1,
+    maxWorldYears = 300
   ): void {
     this.dayOfYear = dayOfYear;
     this.currentClockStr = clockStr;
     this.isNight = isNight;
+    this.worldYear = worldYear;
+    this.maxWorldYears = maxWorldYears;
+
+    if (this.isAwaitingSuccession) return;
 
     const newAge = this.baseAge + elapsedYears;
     if (newAge > this.currentAge) {
@@ -1451,6 +1566,8 @@ export class HeroAgent {
       napsTaken: this.napsTaken,
       tilesExplored: this.visitedTiles.size,
       generation: this.generation,
+      worldYear: this.worldYear,
+      maxWorldYears: this.maxWorldYears,
       activeWeather: this.world.getWeather(),
       kingdom: this.kingdom.getSnapshot(this.int, Math.floor(this.loreExp)),
       deepThought: this.latestDeepThought,
