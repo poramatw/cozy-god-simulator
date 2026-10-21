@@ -1,0 +1,32 @@
+{
+  "buildings": [
+    {
+      "id": "campfire",
+      "name": "กองไฟแคมป์ (Cozy Campfire)",
+      "tier": 1,
+      "requiredInt": 3,
+      "description": "ให้ความอบอุ่นและแสงสว่างยามค่ำคืน"
+    },
+    {
+      "id": "wooden_hut",
+      "name": "กระท่อมไม้ (Wooden Hut)",
+      "tier": 2,
+      "requiredInt": 5,
+      "description": "ที่พักพิงถาวรช่วยให้ฟื้นฟูพลังงานอย่างรวดเร็ว"
+    },
+    {
+      "id": "farm_plot",
+      "name": "แปลงเกษตร (Berry & Wheat Plot)",
+      "tier": 3,
+      "requiredInt": 7,
+      "description": "แหล่งอาหารหมุนเวียนรอบที่พักอาศัย"
+    },
+    {
+      "id": "stone_house",
+      "name": "บ้านหินและโรงตีเหล็ก (Stone Smithy)",
+      "tier": 4,
+      "requiredInt": 10,
+      "description": "ศูนย์กลางอาณาจักรที่มั่นคงและทนทานต่อภัยธรรมชาติ"
+    }
+  ]
+}

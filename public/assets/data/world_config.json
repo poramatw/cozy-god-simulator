@@ -1,0 +1,55 @@
+{
+  "mapWidth": 64,
+  "mapHeight": 64,
+  "tileSize": 16,
+  "noiseScale": 0.065,
+  "detailScale": 0.16,
+  "berryRegrowSeconds": 22,
+  "biomes": [
+    {
+      "id": "deep_water",
+      "name": "ทะเลลึก (Deep Water)",
+      "maxElevation": 0.24,
+      "walkable": false,
+      "speedMultiplier": 0.0,
+      "treeChance": 0.0,
+      "berryChance": 0.0
+    },
+    {
+      "id": "shallow_water",
+      "name": "น้ำตื้นชายฝั่ง (Shallow Water)",
+      "maxElevation": 0.34,
+      "walkable": true,
+      "speedMultiplier": 0.55,
+      "treeChance": 0.0,
+      "berryChance": 0.0
+    },
+    {
+      "id": "sand",
+      "name": "หาดทรายอบอุ่น (Warm Beach)",
+      "maxElevation": 0.43,
+      "walkable": true,
+      "speedMultiplier": 0.85,
+      "treeChance": 0.015,
+      "berryChance": 0.01
+    },
+    {
+      "id": "grass",
+      "name": "ทุ่งหญ้าเขียวขจี (Cozy Meadow)",
+      "maxElevation": 0.70,
+      "walkable": true,
+      "speedMultiplier": 1.0,
+      "treeChance": 0.06,
+      "berryChance": 0.055
+    },
+    {
+      "id": "forest",
+      "name": "พงไพรอุดมสมบูรณ์ (Lush Forest)",
+      "maxElevation": 1.0,
+      "walkable": true,
+      "speedMultiplier": 0.88,
+      "treeChance": 0.22,
+      "berryChance": 0.085
+    }
+  ]
+}

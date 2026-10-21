@@ -1,0 +1,59 @@
+{
+  "traits": [
+    {
+      "id": "curious",
+      "name": "ขี้สงสัย (Curious)",
+      "icon": "🧭",
+      "description": "ชอบเดินสำรวจเกาะกว้างขึ้น เดินไวขึ้น +10% และเก็บแต้มปัญญาไวขึ้น",
+      "exploreBonus": 0.12,
+      "speedMultiplier": 1.1,
+      "energyDecayMultiplier": 1.0,
+      "sleepRecoveryMultiplier": 1.0,
+      "hungerRestoreMultiplier": 1.0
+    },
+    {
+      "id": "peaceful",
+      "name": "รักสงบ (Peaceful)",
+      "icon": "🌿",
+      "description": "ฟื้นฟูพลังงานและพลังชีวิตเร็วขึ้น +30% เมื่อพักผ่อนใต้ต้นไม้หรือกองไฟ",
+      "exploreBonus": 0.0,
+      "speedMultiplier": 0.98,
+      "energyDecayMultiplier": 0.95,
+      "sleepRecoveryMultiplier": 1.3,
+      "hungerRestoreMultiplier": 1.0
+    },
+    {
+      "id": "hardworking",
+      "name": "บ้างาน (Hardworking)",
+      "icon": "⚒️",
+      "description": "ใช้พลังงานช้าลง 20% ในการเดินทางและเก็บเกี่ยวทรัพยากรไวขึ้น",
+      "exploreBonus": 0.05,
+      "speedMultiplier": 1.05,
+      "energyDecayMultiplier": 0.8,
+      "sleepRecoveryMultiplier": 1.0,
+      "hungerRestoreMultiplier": 1.05
+    },
+    {
+      "id": "gourmet",
+      "name": "นักชิมป่า (Forager)",
+      "icon": "🍒",
+      "description": "กินเบอร์รี่แล้วอิ่มมากขึ้น +30% และฟื้นฟูพลังชีวิตพิเศษทุกมื้อ",
+      "exploreBonus": 0.0,
+      "speedMultiplier": 1.0,
+      "energyDecayMultiplier": 1.0,
+      "sleepRecoveryMultiplier": 1.0,
+      "hungerRestoreMultiplier": 1.3
+    },
+    {
+      "id": "night_owl",
+      "name": "ผู้พิทักษ์แสงดาว (Starwatcher)",
+      "icon": "✨",
+      "description": "เคลื่อนที่คล่องแคล่วท่ามกลางสายหมอกและยามค่ำคืน เดินเร็วขึ้น +8%",
+      "exploreBonus": 0.08,
+      "speedMultiplier": 1.08,
+      "energyDecayMultiplier": 0.9,
+      "sleepRecoveryMultiplier": 1.15,
+      "hungerRestoreMultiplier": 1.0
+    }
+  ]
+}
