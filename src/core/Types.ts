@@ -147,6 +147,7 @@ export interface FollowerAgent {
   targetX: number;
   targetY: number;
   sprite: Phaser.GameObjects.Sprite;
+  shadowSprite?: Phaser.GameObjects.Image;
   toolSprite: Phaser.GameObjects.Image;
   animTimer: number;
   taskTimer: number;

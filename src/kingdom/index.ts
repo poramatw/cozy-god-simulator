@@ -439,6 +439,12 @@ export class KingdomManager {
       const px = spawn.x * tileSize + tileSize / 2;
       const py = spawn.y * tileSize + tileSize / 2;
 
+      const shadowSprite = this.scene.add.image(px, py + 2, 'drop_shadow');
+      shadowSprite.setDisplaySize(22, 10);
+      shadowSprite.setAlpha(0.38);
+      shadowSprite.setDepth(py + 1);
+      this.world.getWorldContainer().add(shadowSprite);
+
       const texKey = idx % 2 === 0 ? 'hero_adult_0' : 'hero_teen_0';
       const sprite = this.scene.add.sprite(px, py, texKey);
       sprite.setDisplaySize(24, 28);
@@ -468,6 +474,7 @@ export class KingdomManager {
         targetX: px,
         targetY: py,
         sprite,
+        shadowSprite,
         toolSprite,
         animTimer: 0,
         taskTimer: 0,

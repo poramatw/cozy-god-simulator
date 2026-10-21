@@ -33,9 +33,8 @@ function getOrCreateCanvasTexture(
 }
 
 /**
- * Extracts smooth, high-resolution hand-painted 2.5D Cozy Realistic sprites from 2x2 sheets on black backgrounds.
- * Uses border flood-fill and soft luminance feathering so warm candle/lantern halos are preserved
- * without jagged edges, and updates CanvasTextures in-place so WebGL references remain valid.
+ * Phase 6.1: Extracts True Alpha .png quadrants without runtime background-removal artifacts,
+ * anchors each sprite with a grounded 2.5D elliptical drop shadow, and registers Phaser Animations.
  */
 export function processSpriteSheet2x2(
   scene: Phaser.Scene,
@@ -65,7 +64,7 @@ export function processSpriteSheet2x2(
     let qw = halfW;
     let qh = halfH;
 
-    const pad = 10;
+    const pad = 8;
     qx += pad;
     qy += pad;
     qw -= pad * 2;
@@ -85,48 +84,6 @@ export function processSpriteSheet2x2(
     const imgData = workCtx.getImageData(qx, qy, qw, qh);
     const data = imgData.data;
 
-    const isDarkBg = (idx: number): boolean => {
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-      const maxC = Math.max(r, g, b);
-      return maxC < 46;
-    };
-
-    const visited = new Uint8Array(qw * qh);
-    const queue = new Int32Array(qw * qh);
-    let head = 0;
-    let tail = 0;
-
-    const pushIfBg = (x: number, y: number) => {
-      if (x < 0 || y < 0 || x >= qw || y >= qh) return;
-      const pIdx = y * qw + x;
-      if (visited[pIdx]) return;
-      if (isDarkBg(pIdx * 4)) {
-        visited[pIdx] = 1;
-        queue[tail++] = pIdx;
-      }
-    };
-
-    for (let x = 0; x < qw; x++) {
-      pushIfBg(x, 0);
-      pushIfBg(x, qh - 1);
-    }
-    for (let y = 0; y < qh; y++) {
-      pushIfBg(0, y);
-      pushIfBg(qw - 1, y);
-    }
-
-    while (head < tail) {
-      const curr = queue[head++];
-      const cx = curr % qw;
-      const cy = Math.floor(curr / qw);
-      pushIfBg(cx + 1, cy);
-      pushIfBg(cx - 1, cy);
-      pushIfBg(cx, cy + 1);
-      pushIfBg(cx, cy - 1);
-    }
-
     let minX = qw;
     let minY = qh;
     let maxX = 0;
@@ -134,43 +91,25 @@ export function processSpriteSheet2x2(
 
     for (let y = 0; y < qh; y++) {
       for (let x = 0; x < qw; x++) {
-        const pIdx = y * qw + x;
-        const dIdx = pIdx * 4;
-        const r = data[dIdx];
-        const g = data[dIdx + 1];
-        const b = data[dIdx + 2];
-        const maxC = Math.max(r, g, b);
+        const dIdx = (y * qw + x) * 4;
+        const a = data[dIdx + 3];
+        if (a <= 22) continue;
 
-        if (visited[pIdx]) {
-          if (maxC < 16) {
-            data[dIdx + 3] = 0;
-          } else {
-            data[dIdx + 3] = Math.min(255, Math.floor((maxC - 16) * 4.8));
-          }
-        } else {
-          // Soften 1-pixel fringe adjacent to visited background
-          const hasBgNeighbor =
-            (x > 0 && visited[pIdx - 1]) ||
-            (x < qw - 1 && visited[pIdx + 1]) ||
-            (y > 0 && visited[pIdx - qw]) ||
-            (y < qh - 1 && visited[pIdx + qw]);
-          if (hasBgNeighbor && maxC < 75) {
-            data[dIdx + 3] = Math.min(255, Math.floor(maxC * 2.8));
-          }
-
-          if (spec.removeRedBerries && r > 90 && r > g * 1.3 && r > b * 1.3) {
+        if (spec.removeRedBerries) {
+          const r = data[dIdx];
+          const g = data[dIdx + 1];
+          const b = data[dIdx + 2];
+          if (r > 90 && r > g * 1.3 && r > b * 1.3) {
             data[dIdx] = Math.floor(g * 0.65);
             data[dIdx + 1] = Math.min(255, Math.floor(r * 0.72));
             data[dIdx + 2] = Math.floor(b * 0.75);
           }
-
-          if (data[dIdx + 3] > 18) {
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-          }
         }
+
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
 
@@ -193,26 +132,27 @@ export function processSpriteSheet2x2(
     outCtx.imageSmoothingQuality = 'high';
     outCtx.clearRect(0, 0, spec.outWidth, spec.outHeight);
 
-    // Smooth radial contact shadow at the base
-    const shadowGrad = outCtx.createRadialGradient(
-      spec.outWidth / 2,
-      spec.outHeight - 10,
-      3,
-      spec.outWidth / 2,
-      spec.outHeight - 10,
-      spec.outWidth * 0.36
-    );
-    shadowGrad.addColorStop(0, 'rgba(3, 5, 10, 0.72)');
-    shadowGrad.addColorStop(1, 'rgba(3, 5, 10, 0)');
+    // Phase 6.1: Crisp Grounded Elliptical Drop Shadow at base of every 2.5D object
+    outCtx.save();
+    outCtx.translate(spec.outWidth / 2, spec.outHeight - 10);
+    outCtx.scale(1, 0.42);
+    const radius = spec.outWidth * 0.36;
+    const shadowGrad = outCtx.createRadialGradient(0, 0, radius * 0.15, 0, 0, radius);
+    shadowGrad.addColorStop(0, 'rgba(12, 16, 22, 0.48)');
+    shadowGrad.addColorStop(0.65, 'rgba(12, 16, 22, 0.24)');
+    shadowGrad.addColorStop(1, 'rgba(12, 16, 22, 0)');
     outCtx.fillStyle = shadowGrad;
-    outCtx.fillRect(0, spec.outHeight - 24, spec.outWidth, 24);
+    outCtx.beginPath();
+    outCtx.arc(0, 0, radius, 0, Math.PI * 2);
+    outCtx.fill();
+    outCtx.restore();
 
-    const scale = Math.min((spec.outWidth - 6) / cropW, (spec.outHeight - 6) / cropH);
+    const scale = Math.min((spec.outWidth - 6) / cropW, (spec.outHeight - 8) / cropH);
     const drawW = Math.round(cropW * scale);
     const drawH = Math.round(cropH * scale);
     const drawX = Math.round((spec.outWidth - drawW) / 2);
     const bob = spec.walkBobOffset ?? 0;
-    const drawY = Math.round(spec.outHeight - drawH - 4 + bob);
+    const drawY = Math.round(spec.outHeight - drawH - 5 + bob);
 
     outCtx.drawImage(tempCanvas, minX, minY, cropW, cropH, drawX, drawY, drawW, drawH);
     outTex.refresh();
@@ -257,21 +197,119 @@ export function applyCozyRealisticEraBuildings(scene: Phaser.Scene, era: EraId):
     copyTextureToTarget(scene, 'era_modern_hall', 'obj_hut', 220, 220);
     copyTextureToTarget(scene, 'era_modern_hall', 'obj_stone_smithy', 230, 230);
   } else {
-    // Future Bio-Dome Arcology Era
     copyTextureToTarget(scene, 'era_future_biodome', 'obj_round_hut', 200, 200);
     copyTextureToTarget(scene, 'era_future_biodome', 'obj_hut', 220, 220);
     copyTextureToTarget(scene, 'era_future_biodome', 'obj_stone_smithy', 230, 230);
   }
 }
 
+function generateAtmosphereAndShadowTextures(scene: Phaser.Scene): void {
+  // 1. Reusable Grounded Elliptical Drop Shadow (Phase 6.1)
+  const shadowTex = getOrCreateCanvasTexture(scene, 'drop_shadow', 64, 32);
+  if (shadowTex) {
+    const ctx = shadowTex.getContext();
+    ctx.clearRect(0, 0, 64, 32);
+    ctx.save();
+    ctx.translate(32, 16);
+    ctx.scale(1, 0.46);
+    const grad = ctx.createRadialGradient(0, 0, 4, 0, 0, 28);
+    grad.addColorStop(0, 'rgba(10, 14, 20, 0.45)');
+    grad.addColorStop(0.65, 'rgba(10, 14, 20, 0.22)');
+    grad.addColorStop(1, 'rgba(10, 14, 20, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    shadowTex.refresh();
+  }
+
+  // 2. Warm Point Light Radial Gradient (Phase 7.1)
+  const warmLightTex = getOrCreateCanvasTexture(scene, 'light_warm_point', 256, 256);
+  if (warmLightTex) {
+    const ctx = warmLightTex.getContext();
+    ctx.clearRect(0, 0, 256, 256);
+    const grad = ctx.createRadialGradient(128, 128, 8, 128, 128, 124);
+    grad.addColorStop(0, 'rgba(255, 214, 130, 0.62)');
+    grad.addColorStop(0.38, 'rgba(251, 146, 60, 0.30)');
+    grad.addColorStop(0.72, 'rgba(217, 119, 6, 0.10)');
+    grad.addColorStop(1, 'rgba(217, 119, 6, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    warmLightTex.refresh();
+  }
+
+  // 3. Drifting Daytime Cloud Shadow Blob (Phase 7.1)
+  const cloudTex = getOrCreateCanvasTexture(scene, 'cloud_shadow_blob', 320, 180);
+  if (cloudTex) {
+    const ctx = cloudTex.getContext();
+    ctx.clearRect(0, 0, 320, 180);
+    const blobs = [
+      { x: 110, y: 95, r: 75 },
+      { x: 175, y: 80, r: 82 },
+      { x: 225, y: 100, r: 65 },
+      { x: 145, y: 112, r: 68 },
+    ];
+    for (const b of blobs) {
+      const grad = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, b.r);
+      grad.addColorStop(0, 'rgba(8, 14, 24, 0.38)');
+      grad.addColorStop(0.6, 'rgba(8, 14, 24, 0.16)');
+      grad.addColorStop(1, 'rgba(8, 14, 24, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    cloudTex.refresh();
+  }
+
+  // 4. Nighttime Glowing Firefly Orb (Phase 7.1)
+  const fireflyTex = getOrCreateCanvasTexture(scene, 'firefly_orb', 24, 24);
+  if (fireflyTex) {
+    const ctx = fireflyTex.getContext();
+    ctx.clearRect(0, 0, 24, 24);
+    const grad = ctx.createRadialGradient(12, 12, 1, 12, 12, 11);
+    grad.addColorStop(0, 'rgba(254, 249, 195, 1)');
+    grad.addColorStop(0.4, 'rgba(190, 242, 100, 0.65)');
+    grad.addColorStop(1, 'rgba(163, 230, 53, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 24, 24);
+    fireflyTex.refresh();
+  }
+}
+
+function registerStandardAnimations(scene: Phaser.Scene): void {
+  const animPairs = [
+    { key: 'hero-infant-walk', f0: 'hero_infant_0', f1: 'hero_infant_1', rate: 5 },
+    { key: 'hero-child-walk', f0: 'hero_child_0', f1: 'hero_child_1', rate: 6 },
+    { key: 'hero-teen-walk', f0: 'hero_teen_0', f1: 'hero_teen_1', rate: 6 },
+    { key: 'hero-adult-walk', f0: 'hero_adult_0', f1: 'hero_adult_1', rate: 6 },
+    { key: 'hero-elder-walk', f0: 'hero_elder_0', f1: 'hero_elder_1', rate: 4 },
+    { key: 'campfire-burn', f0: 'obj_campfire_0', f1: 'obj_campfire_1', rate: 4 },
+    { key: 'beast-wolf-walk', f0: 'beast_wolf_0', f1: 'beast_wolf_1', rate: 6 },
+  ];
+
+  for (const a of animPairs) {
+    if (!scene.anims.exists(a.key) && scene.textures.exists(a.f0) && scene.textures.exists(a.f1)) {
+      scene.anims.create({
+        key: a.key,
+        frames: [{ key: a.f0 }, { key: a.f1 }],
+        frameRate: a.rate,
+        repeat: -1,
+      });
+    }
+  }
+}
+
 export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraId = 'stone'): void {
-  // Ensure icon_star exists so seek_blessing never shows a missing texture placeholder
+  generateAtmosphereAndShadowTextures(scene);
+
   const starTex = getOrCreateCanvasTexture(scene, 'icon_star', 28, 28);
   if (starTex) {
     const sCtx = starTex.getContext();
     sCtx.clearRect(0, 0, 28, 28);
-    sCtx.fillStyle = '#38bdf8';
-    sCtx.strokeStyle = '#e0f2fe';
+    sCtx.fillStyle = '#fbbf24';
+    sCtx.strokeStyle = '#fef3c7';
     sCtx.lineWidth = 1.5;
     sCtx.beginPath();
     sCtx.moveTo(14, 3);
@@ -284,7 +322,7 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
     starTex.refresh();
   }
 
-  // 1. Smooth Painterly Buildings Sheet (Base Cozy Realistic Structures)
+  // 1. True Alpha .png Buildings Sheet
   processSpriteSheet2x2(scene, 'sheet_buildings', [
     { targetKey: 'base_timber_hut', col: 0, row: 0, outWidth: 220, outHeight: 220 },
     { targetKey: 'base_round_hut', col: 1, row: 0, outWidth: 200, outHeight: 200 },
@@ -293,7 +331,7 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
     { targetKey: 'obj_campfire_1', col: 1, row: 1, outWidth: 150, outHeight: 150, walkBobOffset: -2 },
   ]);
 
-  // 2. Smooth Painterly Flora Sheet (Cozy Realistic Trees & Bushes)
+  // 2. True Alpha .png Flora Sheet
   processSpriteSheet2x2(scene, 'sheet_flora', [
     { targetKey: 'obj_lantern_tree', col: 0, row: 0, outWidth: 240, outHeight: 256 },
     { targetKey: 'obj_crimson_canopy', col: 1, row: 0, outWidth: 220, outHeight: 230 },
@@ -309,7 +347,7 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
     },
   ]);
 
-  // 3. Smooth Painterly Characters Sheet (Teen, Adult, Elder, Sleep)
+  // 3. True Alpha .png Characters Sheet
   processSpriteSheet2x2(scene, 'sheet_characters', [
     { targetKey: 'hero_teen_0', col: 0, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: 0 },
     { targetKey: 'hero_teen_1', col: 0, row: 0, outWidth: 112, outHeight: 128, walkBobOffset: -4 },
@@ -320,7 +358,7 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
     { targetKey: 'hero_sleep', col: 1, row: 1, outWidth: 136, outHeight: 112 },
   ]);
 
-  // 4. Smooth Painterly Phase 3 Sheet (Mountain Rock, Shadow Wolf, Blessing Shrine, Crystal & Cyan Ferns)
+  // 4. True Alpha .png Phase 3 Sheet
   processSpriteSheet2x2(scene, 'sheet_phase3', [
     { targetKey: 'obj_mountain_rock', col: 0, row: 0, outWidth: 196, outHeight: 196 },
     { targetKey: 'beast_wolf_0', col: 1, row: 0, outWidth: 140, outHeight: 116, walkBobOffset: 0 },
@@ -329,7 +367,7 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
     { targetKey: 'obj_crystal', col: 1, row: 1, outWidth: 164, outHeight: 164 },
   ]);
 
-  // 5. Smooth Painterly Phase 4 Kingdom & Early Life Stages Sheet
+  // 5. True Alpha .png Kingdom & Early Life Stages Sheet
   processSpriteSheet2x2(scene, 'sheet_kingdom', [
     {
       targetKey: 'hero_infant_0',
@@ -372,7 +410,7 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
     { targetKey: 'obj_construction_site', col: 1, row: 1, outWidth: 210, outHeight: 210 },
   ]);
 
-  // 6. Smooth Painterly Era Evolution Sheet (Stone Age Tent, Medieval Keep, Modern Hall, Future Bio-Dome)
+  // 6. True Alpha .png Era Evolution Sheet
   processSpriteSheet2x2(scene, 'sheet_eras', [
     { targetKey: 'era_stone_tent', col: 0, row: 0, outWidth: 200, outHeight: 200 },
     { targetKey: 'era_medieval_keep', col: 1, row: 0, outWidth: 220, outHeight: 220 },
@@ -381,4 +419,5 @@ export function bakeAllHighResSpriteSheets(scene: Phaser.Scene, initialEra: EraI
   ]);
 
   applyCozyRealisticEraBuildings(scene, initialEra);
+  registerStandardAnimations(scene);
 }

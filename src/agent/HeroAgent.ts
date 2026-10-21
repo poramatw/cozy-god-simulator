@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { soundscape } from '../core/AudioManager';
 import {
   ActionId,
   AgentConfig,
@@ -77,9 +78,12 @@ export class HeroAgent {
   private visitedTiles = new Set<string>();
 
   private sprite: Phaser.GameObjects.Sprite;
+  private shadowSprite: Phaser.GameObjects.Image;
+  private thoughtBubble: Phaser.GameObjects.Text;
   private toolSprite: Phaser.GameObjects.Image;
   private heroGlow: Phaser.GameObjects.Image;
   private pathGraphics: Phaser.GameObjects.Graphics;
+  private workHitTimer = 0;
   private floatingQueue: { message: string; colorHex: string }[] = [];
   private floatingCooldown = 0;
   private activeFloatingTexts: { txt: Phaser.GameObjects.Text; offsetY: number }[] = [];
@@ -149,16 +153,34 @@ export class HeroAgent {
     this.pathGraphics.setDepth(5);
     worldContainer.add(this.pathGraphics);
 
-    this.heroGlow = this.scene.add.image(0, 0, 'light_warm');
+    this.heroGlow = this.scene.add.image(0, 0, 'light_warm_point');
     this.heroGlow.setBlendMode(Phaser.BlendModes.ADD);
-    this.heroGlow.setScale(0.28);
-    this.heroGlow.setAlpha(0.22);
+    this.heroGlow.setScale(0.32);
+    this.heroGlow.setAlpha(0.24);
     this.heroGlow.setDepth(3100);
     worldContainer.add(this.heroGlow);
+
+    // Phase 6.1: Grounded Elliptical Drop Shadow beneath Hero
+    this.shadowSprite = this.scene.add.image(0, 0, 'drop_shadow');
+    this.shadowSprite.setDisplaySize(28, 13);
+    this.shadowSprite.setAlpha(0.45);
+    worldContainer.add(this.shadowSprite);
 
     this.sprite = this.scene.add.sprite(0, 0, `${this.getStageSpritePrefix()}_0`);
     this.sprite.setOrigin(0.5, 0.78);
     worldContainer.add(this.sprite);
+
+    // Phase 8.1: Cozy Thought Bubble Icon above Hero's head
+    this.thoughtBubble = this.scene.add.text(0, 0, '🧭', {
+      fontFamily: '"Itim", "Chakra Petch", sans-serif',
+      fontSize: '11px',
+      color: '#2c1e16',
+      backgroundColor: 'rgba(253, 251, 247, 0.92)',
+      padding: { x: 5, y: 2 },
+    });
+    this.thoughtBubble.setOrigin(0.5, 1);
+    this.thoughtBubble.setDepth(3490);
+    worldContainer.add(this.thoughtBubble);
 
     this.toolSprite = this.scene.add.image(0, 0, 'icon_hammer');
     this.toolSprite.setDisplaySize(15, 15);
@@ -827,6 +849,11 @@ export class HeroAgent {
 
     if (this.actionState === 'performing') {
       this.actionTimer -= dt;
+      this.workHitTimer += dt;
+      if (this.workHitTimer >= 0.45) {
+        this.workHitTimer = 0;
+        this.world.shakeResourceAt(site.tileX, site.tileY, 'build');
+      }
       const buildSpeed = 1 + (this.str - 5) * 0.08 + (this.int - 5) * 0.06;
       const finished = this.kingdom.advanceConstruction(dt * buildSpeed);
       this.loreExp += 1.4 * dt;
@@ -834,6 +861,7 @@ export class HeroAgent {
       if (finished || this.actionTimer <= 0) {
         if (finished) {
           this.buildingsCompleted++;
+          soundscape.playBuildComplete();
           this.cognition.recordEpisodicMemory({
             generation: this.generation,
             heroName: this.name,
@@ -846,7 +874,7 @@ export class HeroAgent {
             tileX: this.tileX,
             tileY: this.tileY,
           });
-          this.spawnFloatingText(`🏛️ สร้าง ${site.building.name} สำเร็จ!`, '#ffd166');
+          this.spawnFloatingText(`🏛️ ${site.building.name}`, '#ffd166');
         }
         this.toolSprite.setVisible(false);
         this.actionState = 'idle';
@@ -879,10 +907,16 @@ export class HeroAgent {
   private handleGatherResourcesAction(dt: number): void {
     if (this.actionState === 'performing') {
       this.actionTimer -= dt;
-      if (Math.random() < 0.25) {
+      this.workHitTimer += dt;
+      if (this.workHitTimer >= 0.44 && this.targetResource) {
+        this.workHitTimer = 0;
         const isStone =
-          this.targetResource?.type === 'mountain_rock' || this.targetResource?.type === 'crystal';
-        this.world.spawnWorkParticles(this.x, this.y, isStone ? 'stone' : 'wood');
+          this.targetResource.type === 'mountain_rock' || this.targetResource.type === 'crystal';
+        this.world.shakeResourceAt(
+          this.targetResource.tileX,
+          this.targetResource.tileY,
+          isStone ? 'stone' : 'wood'
+        );
       }
 
       if (this.actionTimer <= 0) {
@@ -1380,12 +1414,32 @@ export class HeroAgent {
   }
 
   private syncVisualPosition(): void {
+    this.shadowSprite.setPosition(this.x, this.y + 2);
+    this.shadowSprite.setDepth(this.y + 1);
+
     this.sprite.setPosition(this.x, this.y);
     this.sprite.setDepth(this.y + 3);
     this.heroGlow.setPosition(this.x, this.y - 4);
 
     this.toolSprite.setPosition(this.x + (this.sprite.flipX ? -11 : 11), this.y - 10);
     this.toolSprite.setDepth(this.y + 6);
+
+    // Phase 8.1: Update cute Thought Bubble icon above Hero's head
+    const bubbleIcons: Record<ActionId, string> = {
+      eat_berry: '🍖',
+      sleep_tree: '💤',
+      warm_campfire: '🔥',
+      seek_blessing: '💎',
+      build_kingdom: '🔨',
+      gather_resources: '🪓',
+      explore_island: '🧭',
+    };
+    const nextIcon = bubbleIcons[this.currentAction] || '🧭';
+    if (this.thoughtBubble.text !== nextIcon) {
+      this.thoughtBubble.setText(nextIcon);
+    }
+    const floatBob = Math.sin(this.workSwingClock * 3.2) * 1.8;
+    this.thoughtBubble.setPosition(this.x, this.y - 28 + floatBob);
 
     for (let i = 0; i < this.activeFloatingTexts.length; i++) {
       const item = this.activeFloatingTexts[i];

@@ -5,6 +5,7 @@ import { KingdomManager } from '../kingdom';
 import { HudOverlay } from '../ui/HudOverlay';
 import { IslandWorld } from '../world/IslandWorld';
 import { SeasonAndDisasterSystem } from '../world/SeasonAndDisasterSystem';
+import { soundscape } from './AudioManager';
 import { generateAllPixelTextures } from './PixelTextures';
 import { bakeAllHighResSpriteSheets } from './SpriteSheetProcessor';
 import { TimeManager } from './TimeManager';
@@ -38,6 +39,10 @@ export class GameScene extends Phaser.Scene {
 
   private activeGodTool: GodToolId = 'inspect';
   private tileCursor!: Phaser.GameObjects.Image;
+  private godReticleGraphics!: Phaser.GameObjects.Graphics;
+  private godReticleRotation = 0;
+  private cameraColorMatrix?: Phaser.FX.ColorMatrix;
+  private hoveredResourceRef: any = null;
   private followHero = true;
   private isDraggingCamera = false;
   private pointerMovedWhileDown = false;
@@ -100,13 +105,13 @@ export class GameScene extends Phaser.Scene {
     this.load.json('weather_data', 'assets/data/weather_events.json');
     this.load.json('buildings_data', 'assets/data/buildings.json');
 
-    // Genuine Cozy Realistic Hand-Painted 2.5D Sprite Sheets
-    this.load.image('sheet_buildings', 'assets/sprites/hd_buildings_sheet.jpg');
-    this.load.image('sheet_flora', 'assets/sprites/hd_flora_sheet.jpg');
-    this.load.image('sheet_characters', 'assets/sprites/hd_characters_sheet.jpg');
-    this.load.image('sheet_phase3', 'assets/sprites/hd_phase3_sheet.jpg');
-    this.load.image('sheet_kingdom', 'assets/sprites/hd_kingdom_sheet.jpg');
-    this.load.image('sheet_eras', 'assets/sprites/hd_eras_sheet.jpg');
+    // Genuine Cozy Realistic Hand-Painted 2.5D Sprite Sheets (True Alpha Transparent PNG)
+    this.load.image('sheet_buildings', 'assets/sprites/hd_buildings_sheet.png');
+    this.load.image('sheet_flora', 'assets/sprites/hd_flora_sheet.png');
+    this.load.image('sheet_characters', 'assets/sprites/hd_characters_sheet.png');
+    this.load.image('sheet_phase3', 'assets/sprites/hd_phase3_sheet.png');
+    this.load.image('sheet_kingdom', 'assets/sprites/hd_kingdom_sheet.png');
+    this.load.image('sheet_eras', 'assets/sprites/hd_eras_sheet.png');
   }
 
   public create(): void {
@@ -331,23 +336,40 @@ export class GameScene extends Phaser.Scene {
         },
         onSelectGodTool: (toolId: GodToolId) => {
           this.activeGodTool = toolId;
+          soundscape.playClickWood();
+          if (this.hoveredTileX >= 0 && this.hoveredTileY >= 0) {
+            const px = this.hoveredTileX * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+            const py = this.hoveredTileY * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+            if (toolId !== 'inspect') {
+              this.tileCursor.setVisible(false);
+              this.godReticleGraphics.setVisible(true);
+              this.redrawGodReticle(px, py);
+            } else {
+              this.godReticleGraphics.setVisible(false);
+              this.tileCursor.setVisible(true);
+            }
+          }
         },
         onGrantDivineInspiration: () => {
           this.hero.grantDivineInspiration();
+          soundscape.playDivineMiracle();
           this.refreshHud();
         },
         onTriggerLegacyHeir: () => {
           this.hero.triggerNextGenerationHeir();
+          soundscape.playDivineMiracle();
           this.refreshHud();
         },
         onAdvanceEra: () => {
           this.kingdom.advanceEraManual();
           this.hero.refreshEraAppearance();
+          soundscape.playBuildComplete();
           this.refreshHud();
         },
         onSelectEra: (eraIndex: number) => {
           this.kingdom.setEraByIndex(eraIndex, true);
           this.hero.refreshEraAppearance();
+          soundscape.playBuildComplete();
           this.refreshHud();
         },
       },
@@ -400,6 +422,14 @@ export class GameScene extends Phaser.Scene {
     cam.setZoom(1.85);
     this.centerCameraOnHero();
 
+    if (this.cameras.main.postFX) {
+      this.cameraColorMatrix = this.cameras.main.postFX.addColorMatrix();
+    }
+
+    this.godReticleGraphics = this.add.graphics();
+    this.godReticleGraphics.setDepth(3550);
+    this.godReticleGraphics.setVisible(false);
+
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasdKeys = {
@@ -450,16 +480,40 @@ export class GameScene extends Phaser.Scene {
       if (tile) {
         this.hoveredTileX = tx;
         this.hoveredTileY = ty;
-        this.tileCursor.setVisible(true);
-        this.tileCursor.setPosition(
-          tx * this.worldConfig.tileSize + this.worldConfig.tileSize / 2,
-          ty * this.worldConfig.tileSize + this.worldConfig.tileSize / 2
-        );
+        const px = tx * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+        const py = ty * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+
+        if (this.activeGodTool !== 'inspect') {
+          this.tileCursor.setVisible(false);
+          this.godReticleGraphics.setVisible(true);
+          this.redrawGodReticle(px, py);
+        } else {
+          this.godReticleGraphics.setVisible(false);
+          this.tileCursor.setVisible(true);
+          this.tileCursor.setPosition(px, py);
+        }
+
+        // Phase 7.2 Interactive Highlight on hovered resource
+        if (this.hoveredResourceRef !== tile.resource) {
+          if (this.hoveredResourceRef?.sprite) {
+            this.hoveredResourceRef.sprite.clearTint();
+          }
+          this.hoveredResourceRef = tile.resource;
+          if (tile.resource?.sprite) {
+            tile.resource.sprite.setTint(0xfffaed);
+          }
+        }
+
         this.hud.updateTileInspector(tile);
       } else {
         this.hoveredTileX = -1;
         this.hoveredTileY = -1;
         this.tileCursor.setVisible(false);
+        this.godReticleGraphics.setVisible(false);
+        if (this.hoveredResourceRef?.sprite) {
+          this.hoveredResourceRef.sprite.clearTint();
+          this.hoveredResourceRef = null;
+        }
         this.hud.updateTileInspector(undefined);
       }
     });
@@ -513,7 +567,11 @@ export class GameScene extends Phaser.Scene {
         break;
       case 'spawn_berry':
         if (tile.biome.walkable) {
+          const px = tx * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+          const py = ty * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
           this.world.spawnResource('berry_bush', tx, ty, true);
+          this.world.spawnShockwaveRing(px, py, 0x10b981);
+          soundscape.playDivineMiracle();
           this.hud.addChronicle({
             year: snap.age,
             day: snap.dayOfYear,
@@ -550,7 +608,11 @@ export class GameScene extends Phaser.Scene {
       }
       case 'spawn_blessing':
         if (tile.biome.walkable) {
+          const px = tx * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+          const py = ty * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
           this.world.spawnResource('blessing_shrine', tx, ty, false);
+          this.world.spawnShockwaveRing(px, py, 0xfbbf24);
+          soundscape.playDivineMiracle();
           this.hud.addChronicle({
             year: snap.age,
             day: snap.dayOfYear,
@@ -609,6 +671,28 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const isWinter = this.seasonSys.getSeasonMeta().id === 'winter';
+    this.world.setLightingContext(clock.isNight, isWinter);
+    this.updateCameraColorGrading(clock.hours, clock.minutes, isWinter);
+
+    // Dynamic Spatial Soundscape
+    const campfire = this.world.getCampfireResource();
+    const cam = this.cameras.main;
+    const camCenterX = cam.scrollX + cam.width / 2;
+    const camCenterY = cam.scrollY + cam.height / 2;
+    const distToFire = campfire?.sprite
+      ? Phaser.Math.Distance.Between(camCenterX, camCenterY, campfire.sprite.x, campfire.sprite.y)
+      : 9999;
+    soundscape.updateSpatialAmbience(cam.zoom, distToFire, clock.isNight, isWinter, deltaMs / 1000);
+
+    // Rotate God Reticle if active
+    if (this.godReticleGraphics.visible && this.hoveredTileX >= 0 && this.hoveredTileY >= 0) {
+      this.godReticleRotation += (deltaMs / 1000) * 2.2;
+      const px = this.hoveredTileX * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+      const py = this.hoveredTileY * this.worldConfig.tileSize + this.worldConfig.tileSize / 2;
+      this.redrawGodReticle(px, py);
+    }
+
     this.world.update(simDeltaSec, deltaMs);
     this.seasonSys.update(simDeltaSec, deltaMs, this.timeManager.getDayOfYear());
     this.kingdom.update(simDeltaSec, this.hero.int, Math.floor(this.hero.loreExp));
@@ -663,6 +747,72 @@ export class GameScene extends Phaser.Scene {
       const targetScrollY = this.hero.y - cam.height / 2;
       cam.scrollX = Phaser.Math.Linear(cam.scrollX, targetScrollX, 0.12);
       cam.scrollY = Phaser.Math.Linear(cam.scrollY, targetScrollY, 0.12);
+    }
+  }
+
+  private redrawGodReticle(px: number, py: number): void {
+    this.godReticleGraphics.clear();
+    if (this.activeGodTool === 'inspect') return;
+
+    let colorHex = 0xf59e0b;
+    switch (this.activeGodTool) {
+      case 'spawn_mountain': colorHex = 0xd97706; break;
+      case 'terraform_river': colorHex = 0x06b6d4; break;
+      case 'spawn_berry': colorHex = 0x10b981; break;
+      case 'spawn_beast': colorHex = 0xef4444; break;
+      case 'smite_lightning': colorHex = 0x8ef6ff; break;
+      case 'spawn_blessing': colorHex = 0xfbbf24; break;
+    }
+
+    const r = 22;
+    // Outer rotating magic ring
+    this.godReticleGraphics.lineStyle(2, colorHex, 0.88);
+    this.godReticleGraphics.strokeCircle(px, py, r);
+
+    // Inner rotating celestial markers
+    const angle = this.godReticleRotation;
+    for (let i = 0; i < 4; i++) {
+      const a = angle + (i * Math.PI) / 2;
+      const x1 = px + Math.cos(a) * (r - 4);
+      const y1 = py + Math.sin(a) * (r - 4);
+      const x2 = px + Math.cos(a) * (r + 4);
+      const y2 = py + Math.sin(a) * (r + 4);
+      this.godReticleGraphics.lineBetween(x1, y1, x2, y2);
+    }
+
+    // Inner glowing ring
+    this.godReticleGraphics.lineStyle(1.2, 0xffffff, 0.7);
+    this.godReticleGraphics.strokeCircle(px, py, r * 0.52);
+
+    // Center jewel pip
+    this.godReticleGraphics.fillStyle(colorHex, 0.95);
+    this.godReticleGraphics.fillCircle(px, py, 3);
+  }
+
+  private updateCameraColorGrading(hours: number, minutes: number, isWinter: boolean): void {
+    if (!this.cameraColorMatrix) return;
+    const timeDec = hours + minutes / 60;
+    this.cameraColorMatrix.reset();
+
+    if (timeDec >= 5 && timeDec < 7.5) {
+      // Dawn: soft warm peach tint
+      this.cameraColorMatrix.sepia(false);
+      this.cameraColorMatrix.saturate(1.12, true);
+    } else if (timeDec >= 7.5 && timeDec < 16.5) {
+      // Bright natural daylight
+      this.cameraColorMatrix.saturate(1.06, false);
+      if (isWinter) {
+        this.cameraColorMatrix.saturate(0.68, true);
+      }
+    } else if (timeDec >= 16.5 && timeDec < 19.5) {
+      // Golden Hour: rich honey-amber warmth
+      this.cameraColorMatrix.sepia(false);
+      this.cameraColorMatrix.brightness(0.96, true);
+      this.cameraColorMatrix.saturate(1.16, true);
+    } else {
+      // Night: deep indigo / moonlit sapphire
+      this.cameraColorMatrix.night(0.36, false);
+      this.cameraColorMatrix.saturate(0.85, true);
     }
   }
 
