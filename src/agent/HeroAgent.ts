@@ -1045,13 +1045,13 @@ export class HeroAgent {
     if (this.actionState === 'performing') {
       this.actionTimer -= dt;
       if (
-        (this.actionTimer <= 0 || this.energy >= 92) &&
+        this.actionTimer <= 0 &&
         this.world.getWeather().id !== 'snow' &&
         this.seasonSys.getActiveDisaster() !== 'blizzard'
       ) {
         this.spawnFloatingText(`+ปัญญา ✨`, '#ffd166');
         this.actionState = 'idle';
-        this.evaluateBrain(true, dt);
+        this.switchAction('explore_island');
       }
       return;
     }

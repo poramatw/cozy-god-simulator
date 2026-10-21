@@ -323,11 +323,7 @@ export class IslandWorld {
     const heightPx = mapHeight * tileSize;
     const texKey = 'world_seamless_terrain';
 
-    if (this.scene.textures.exists(texKey)) {
-      this.scene.textures.remove(texKey);
-    }
-
-    // Higher-definition base terrain grid (8x per tile) for crisp biome transitions without blurry haze
+    // Higher-definition base terrain grid (6x per tile) for crisp biome transitions without blurry haze
     const subRes = 6;
     const lowW = mapWidth * subRes;
     const lowH = mapHeight * subRes;
@@ -411,9 +407,21 @@ export class IslandWorld {
     }
     offCtx.putImageData(imgData, 0, 0);
 
-    const canvasTex = this.scene.textures.createCanvas(texKey, widthPx, heightPx);
+    let canvasTex: Phaser.Textures.CanvasTexture | null = null;
+    if (this.scene.textures.exists(texKey)) {
+      const existingTex = this.scene.textures.get(texKey);
+      if (existingTex instanceof Phaser.Textures.CanvasTexture) {
+        canvasTex = existingTex;
+      } else {
+        this.scene.textures.remove(texKey);
+      }
+    }
+    if (!canvasTex) {
+      canvasTex = this.scene.textures.createCanvas(texKey, widthPx, heightPx);
+    }
     if (!canvasTex) return;
     const ctx = canvasTex.getContext();
+    ctx.clearRect(0, 0, widthPx, heightPx);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(offCanvas, 0, 0, lowW, lowH, 0, 0, widthPx, heightPx);

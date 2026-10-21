@@ -251,12 +251,12 @@ export class DeepCognitionEngine {
         ageRoleTitle = '👶 ทารกน้อยแห่งกองไฟ';
         ageBehaviorSummary =
           'ยังทำงานหนักไม่ได้ ต้องการไออุ่นความปลอดภัย การนอนหลับ และเดินเตาะแตะชมธรรมชาติใกล้หมู่บ้าน';
-        mods.warm_campfire += 0.35;
-        mods.sleep_tree += 0.20;
+        mods.explore_island += 0.28;
+        mods.warm_campfire += 0.08;
+        mods.sleep_tree += 0.15;
         mods.build_kingdom = -10; // Cannot build
         mods.gather_resources = -10; // Cannot chop trees
-        mods.explore_island -= 0.15;
-        chain.push('[จิตวิทยาวัยทารก] ร่างกายยังเยาว์วัย เน้นความอบอุ่นใกล้กองไฟและการพักผ่อน งดงานก่อสร้าง');
+        chain.push('[จิตวิทยาวัยทารก] ร่างกายยังเยาว์วัย เดินเตาะแตะสำรวจรอบกองไฟและพักผ่อน งดงานก่อสร้าง');
         break;
 
       case 'child':

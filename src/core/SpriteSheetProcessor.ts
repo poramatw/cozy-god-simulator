@@ -18,10 +18,21 @@ export function bakeAllHighResSpriteSheets(
   // Crisp Shadow Wolf Sprites (2 frames)
   for (const frame of [0, 1]) {
     const key = `beast_wolf_${frame}`;
-    if (scene.textures.exists(key)) scene.textures.remove(key);
-    const tex = scene.textures.createCanvas(key, 96, 80);
+    let tex: Phaser.Textures.CanvasTexture | null = null;
+    if (scene.textures.exists(key)) {
+      const existing = scene.textures.get(key);
+      if (existing instanceof Phaser.Textures.CanvasTexture) {
+        tex = existing;
+      } else {
+        scene.textures.remove(key);
+      }
+    }
+    if (!tex) {
+      tex = scene.textures.createCanvas(key, 96, 80);
+    }
     if (!tex) continue;
     const ctx = tex.getContext();
+    ctx.clearRect(0, 0, 96, 80);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     const cx = 48;

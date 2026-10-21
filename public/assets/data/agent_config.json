@@ -1,10 +1,10 @@
 {
   "defaultHeroName": "เอลิน (Elin)",
   "defaultClanName": "แห่งโมริมาร์ (of the Morimar)",
-  "initialAge": 1,
+  "initialAge": 14,
   "maxLifespanAge": 75,
-  "secondsPerYear": 32,
-  "baseMoveSpeedPx": 52,
+  "secondsPerYear": 18,
+  "baseMoveSpeedPx": 56,
   "defaultStats": {
     "str": 5,
     "int": 5,

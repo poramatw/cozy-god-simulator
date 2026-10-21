@@ -61,13 +61,6 @@ export class GameScene extends Phaser.Scene {
     this.load.json('traits_data', 'assets/data/traits.json');
     this.load.json('weather_data', 'assets/data/weather_events.json');
     this.load.json('buildings_data', 'assets/data/buildings.json');
-
-    // Load Smooth Hand-Painted 2.5D Sprite Sheets (Non-Pixel Art, matching Reference)
-    this.load.image('sheet_buildings', 'assets/sprites/hd_buildings_sheet.jpg');
-    this.load.image('sheet_flora', 'assets/sprites/hd_flora_sheet.jpg');
-    this.load.image('sheet_characters', 'assets/sprites/hd_characters_sheet.jpg');
-    this.load.image('sheet_phase3', 'assets/sprites/hd_phase3_sheet.jpg');
-    this.load.image('sheet_kingdom', 'assets/sprites/hd_kingdom_sheet.jpg');
   }
 
   public create(): void {

@@ -10,16 +10,27 @@ function makeCanvas(
   h: number,
   draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
 ): void {
+  let tex: Phaser.Textures.CanvasTexture | null = null;
   if (scene.textures.exists(key)) {
-    scene.textures.remove(key);
+    const existing = scene.textures.get(key);
+    if (existing instanceof Phaser.Textures.CanvasTexture && existing.width === w && existing.height === h) {
+      tex = existing;
+    } else {
+      scene.textures.remove(key);
+    }
   }
-  const tex = scene.textures.createCanvas(key, w, h);
+  if (!tex) {
+    tex = scene.textures.createCanvas(key, w, h);
+  }
   if (!tex) return;
   const ctx = tex.getContext();
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, w, h);
   draw(ctx, w, h);
+  ctx.restore();
   tex.refresh();
 }
 

@@ -83,19 +83,22 @@ export class UtilityBrain {
 
     // 3. Warm by Campfire (Critical during Snowstorms, Blizzards, or when fleeing Danger!)
     let fireScore =
-      (warm_campfire ? (ctx.isNight ? warm_campfire.baseNightScore : 0.22) : 0.22) +
+      (warm_campfire ? (ctx.isNight ? warm_campfire.baseNightScore * 0.55 : 0.16) : 0.16) +
       dm.warm_campfire;
     if (ctx.isSnowing) {
       fireScore = Math.max(fireScore, 0.94);
     } else if (ctx.isDangerNear) {
       fireScore = Math.max(fireScore, 0.96);
+    } else if (ctx.energy >= 80) {
+      // Already well-rested — go explore, gather, or build instead of idling at the fire!
+      fireScore = Math.min(fireScore, 0.18);
     } else if (ctx.energy < 74 && ctx.energy > 42 && ctx.hunger > 50) {
       fireScore += 0.12;
     }
-    if (ctx.currentAction === 'warm_campfire' && ctx.energy < 88 && ctx.hunger > 35) {
+    if (ctx.currentAction === 'warm_campfire' && ctx.energy < 84 && ctx.hunger > 35) {
       fireScore += warm_campfire?.commitmentBonus ?? 0.2;
     }
-    fireScore = Math.min(0.98, Math.max(0.12, fireScore));
+    fireScore = Math.min(0.98, Math.max(0.10, fireScore));
 
     // 4. Seek Divine Blessing Shrine (Phase 3 God's Hand)
     let blessingScore = 0;
