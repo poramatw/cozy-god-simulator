@@ -1,0 +1,49 @@
+{
+  "biomes": [
+    {
+      "id": "deep_water",
+      "name": "ทะเลลึก (Deep Ocean)",
+      "maxElevation": 0.22,
+      "walkable": false,
+      "speedMultiplier": 0.0,
+      "treeChance": 0.0,
+      "berryChance": 0.0
+    },
+    {
+      "id": "shallow_water",
+      "name": "ธารน้ำเรืองแสง (Mystic Stream)",
+      "maxElevation": 0.32,
+      "walkable": true,
+      "speedMultiplier": 0.6,
+      "treeChance": 0.0,
+      "berryChance": 0.0
+    },
+    {
+      "id": "sand",
+      "name": "ชายฝั่งและลานหิน (Shore & Foothills)",
+      "maxElevation": 0.41,
+      "walkable": true,
+      "speedMultiplier": 0.9,
+      "treeChance": 0.012,
+      "berryChance": 0.008
+    },
+    {
+      "id": "grass",
+      "name": "ทุ่งหญ้าอุดมสมบูรณ์ (Fertile Plains)",
+      "maxElevation": 0.68,
+      "walkable": true,
+      "speedMultiplier": 1.0,
+      "treeChance": 0.045,
+      "berryChance": 0.038
+    },
+    {
+      "id": "forest",
+      "name": "พงไพรโบราณ (Ancient Woodland)",
+      "maxElevation": 1.0,
+      "walkable": true,
+      "speedMultiplier": 0.88,
+      "treeChance": 0.16,
+      "berryChance": 0.055
+    }
+  ]
+}

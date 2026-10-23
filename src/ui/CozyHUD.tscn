@@ -1,0 +1,209 @@
+[gd_scene load_steps=2 format=3 uid="uid://cozyhud001"]
+
+[ext_resource type="Script" path="res://src/ui/CozyHUD.gd" id="1_hud"]
+
+[node name="CozyHUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="TopLeftPill" type="PanelContainer" parent="."]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 620.0
+offset_bottom = 56.0
+
+[node name="HBox" type="HBoxContainer" parent="TopLeftPill"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="LblHero" type="Label" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "👤 อาเดรียน | วัย 20 ปี (รุ่น 1) | 🍖 100% 💤 100% ❤️ 100%"
+
+[node name="LblClock" type="Label" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "⏰ ปีที่ 1 (08:00)"
+
+[node name="BtnPause" type="Button" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "⏸️"
+
+[node name="Btn1x" type="Button" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "1x"
+
+[node name="Btn2x" type="Button" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "2x"
+
+[node name="Btn5x" type="Button" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "5x"
+
+[node name="BtnDrawer" type="Button" parent="TopLeftPill/HBox"]
+layout_mode = 2
+text = "📖 บันทึก"
+
+[node name="TopRightPill" type="PanelContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -560.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 56.0
+grow_horizontal = 0
+
+[node name="HBox" type="HBoxContainer" parent="TopRightPill"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="LblEra" type="Label" parent="TopRightPill/HBox"]
+layout_mode = 2
+text = "🏛️ ยุคหินปฐมกาล"
+
+[node name="LblResources" type="Label" parent="TopRightPill/HBox"]
+layout_mode = 2
+text = "🪵 25  🪨 15  🌾 40  📜 0  💎 10"
+
+[node name="BottomBar" type="PanelContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -64.0
+offset_right = 340.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="ToolsHBox" type="HBoxContainer" parent="BottomBar"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="BtnInspect" type="Button" parent="BottomBar/ToolsHBox"]
+layout_mode = 2
+text = "🔍 ตรวจสอบ"
+
+[node name="BtnSpawnBerry" type="Button" parent="BottomBar/ToolsHBox"]
+layout_mode = 2
+text = "🍒 เสกเบอร์รี่"
+
+[node name="BtnSpawnMountain" type="Button" parent="BottomBar/ToolsHBox"]
+layout_mode = 2
+text = "⛰️ เสกภูเขาหิน"
+
+[node name="BtnTerraformRiver" type="Button" parent="BottomBar/ToolsHBox"]
+layout_mode = 2
+text = "🌊 ขุดลำธาร"
+
+[node name="BtnSpawnBlessing" type="Button" parent="BottomBar/ToolsHBox"]
+layout_mode = 2
+text = "💎 แท่นผลึกดารา"
+
+[node name="BtnSmiteLightning" type="Button" parent="BottomBar/ToolsHBox"]
+layout_mode = 2
+text = "⚡ สายฟ้าสวรรค์"
+
+[node name="ChronicleDrawer" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = 70.0
+offset_right = -16.0
+offset_bottom = -80.0
+grow_horizontal = 0
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="ChronicleDrawer"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="LblTitle" type="Label" parent="ChronicleDrawer/VBox"]
+layout_mode = 2
+text = "📖 บันทึกประวัติศาสตร์ & ความคิด"
+horizontal_alignment = 1
+
+[node name="MonologueBox" type="PanelContainer" parent="ChronicleDrawer/VBox"]
+layout_mode = 2
+
+[node name="LblMonologue" type="Label" parent="ChronicleDrawer/VBox/MonologueBox"]
+layout_mode = 2
+text = "“ข้าลืมตาตื่นขึ้นมาบนผืนแผ่นดินอันอบอุ่นแห่งนี้...”"
+autowrap_mode = 2
+
+[node name="LogBox" type="PanelContainer" parent="ChronicleDrawer/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TxtLog" type="RichTextLabel" parent="ChronicleDrawer/VBox/LogBox"]
+layout_mode = 2
+bbcode_enabled = true
+scroll_following = true
+
+[node name="GenesisModal" type="PanelContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -260.0
+offset_top = -180.0
+offset_right = 260.0
+offset_bottom = 180.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="GenesisModal"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="LblHeader" type="Label" parent="GenesisModal/VBox"]
+layout_mode = 2
+text = "🌿 ปฐมกาลแห่งโมริมาร์ (Genesis of Morimar)"
+horizontal_alignment = 1
+
+[node name="LblDesc" type="Label" parent="GenesisModal/VBox"]
+layout_mode = 2
+text = "ยินดีต้อนรับสู่โลกแห่งโมริมาร์ ในฐานะเทพเจ้าผู้ดูแล ท่านจะได้เฝ้ามองตัวเอกและชนเผ่าเติบโต สร้างอารยธรรม 5 ยุคสมัย และสืบทอดสายเลือดตระกูลไปจนถึงกาลอวสานของโลก"
+autowrap_mode = 2
+horizontal_alignment = 1
+
+[node name="BtnStartWorld" type="Button" parent="GenesisModal/VBox"]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "✨ เริ่มต้นการสร้างโลก"
+
+[node name="HeirModal" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -380.0
+offset_top = -160.0
+offset_right = 380.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HeirModal"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="LblHeirTitle" type="Label" parent="HeirModal/VBox"]
+layout_mode = 2
+text = "👑 พิธีสืบทอดสายเลือดตระกูล (Dynasty Succession)"
+horizontal_alignment = 1
+
+[node name="HeirCards" type="HBoxContainer" parent="HeirModal/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1

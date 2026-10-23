@@ -1,0 +1,161 @@
+{
+  "defaultHeroName": "เอลิน (Elin)",
+  "defaultClanName": "แห่งโมริมาร์ (of the Morimar)",
+  "initialAge": 14,
+  "maxLifespanAge": 75,
+  "secondsPerYear": 18,
+  "baseMoveSpeedPx": 56,
+  "defaultStats": {
+    "str": 5,
+    "int": 5,
+    "agi": 5,
+    "bonusPoints": 5
+  },
+  "lifeStages": [
+    {
+      "id": "infant",
+      "name": "วัยทารก (Infant)",
+      "badge": "👶 ทารก (0-4 ปี)",
+      "minAge": 0,
+      "maxAge": 4,
+      "scale": 0.66,
+      "speedMultiplier": 0.78,
+      "energyDecayMultiplier": 1.15,
+      "hungerDecayMultiplier": 1.12,
+      "description": "วัยเตาะแตะตัวน้อยในชุดผ้าคลุมเด็กอ่อน เรียนรู้โลกใกล้กองไฟ"
+    },
+    {
+      "id": "child",
+      "name": "วัยเด็ก (Child)",
+      "badge": "🧒 วัยเด็ก (5-12 ปี)",
+      "minAge": 5,
+      "maxAge": 12,
+      "scale": 0.80,
+      "speedMultiplier": 0.96,
+      "energyDecayMultiplier": 1.02,
+      "hungerDecayMultiplier": 1.05,
+      "description": "เด็กน้อยช่างสงสัยที่ชอบวิ่งเล่นและเก็บฟืนช่วยหมู่บ้าน"
+    },
+    {
+      "id": "teen",
+      "name": "วัยรุ่น (Youth)",
+      "badge": "🧑 วัยรุ่น (13-19 ปี)",
+      "minAge": 13,
+      "maxAge": 19,
+      "scale": 0.92,
+      "speedMultiplier": 1.1,
+      "energyDecayMultiplier": 0.95,
+      "hungerDecayMultiplier": 1.05,
+      "description": "นักสำรวจหนุ่มสาวถือตะเกียงไฟ เริ่มเรียนรู้การก่อสร้าง"
+    },
+    {
+      "id": "adult",
+      "name": "วัยผู้ใหญ่ (Adult)",
+      "badge": "⚔️ ผู้ใหญ่ (20-49 ปี)",
+      "minAge": 20,
+      "maxAge": 49,
+      "scale": 1.04,
+      "speedMultiplier": 1.12,
+      "energyDecayMultiplier": 0.88,
+      "hungerDecayMultiplier": 0.92,
+      "description": "ผู้นำหมู่บ้านเต็มตัวในชุดเกราะหนังและผ้าคลุม สร้างอาณาจักรได้อย่างรวดเร็ว"
+    },
+    {
+      "id": "elder",
+      "name": "วัยชรา (Elder)",
+      "badge": "🧓 วัยชรา (50+ ปี)",
+      "minAge": 50,
+      "maxAge": 120,
+      "scale": 0.98,
+      "speedMultiplier": 0.82,
+      "energyDecayMultiplier": 1.2,
+      "hungerDecayMultiplier": 0.85,
+      "description": "ปราชญ์อาวุโสผมสีเงินถือไม้เท้า เปี่ยมด้วยภูมิปัญญาพร้อมส่งต่อมรดกสู่รุ่นลูก"
+    }
+  ],
+  "needs": {
+    "hunger": {
+      "initial": 88,
+      "max": 100,
+      "decayPerSec": 1.2,
+      "starveDamagePerSec": 1.5
+    },
+    "energy": {
+      "initial": 92,
+      "max": 100,
+      "decayPerSec": 0.85,
+      "moveExtraDecayPerSec": 0.25,
+      "exhaustDamagePerSec": 0.7
+    },
+    "health": {
+      "initial": 100,
+      "max": 100,
+      "regenPerSecWhenWell": 1.2,
+      "wellThresholdHunger": 55,
+      "wellThresholdEnergy": 45
+    }
+  },
+  "actions": {
+    "eat_berry": {
+      "id": "eat_berry",
+      "label": "เก็บอาหาร/ผลผลิต",
+      "icon": "icon_berry",
+      "hungerRestore": 40,
+      "healthRestore": 6,
+      "durationSec": 1.5,
+      "urgencyThreshold": 65,
+      "commitmentBonus": 0.25
+    },
+    "sleep_tree": {
+      "id": "sleep_tree",
+      "label": "พักผ่อนฟื้นพลัง",
+      "icon": "icon_zzz",
+      "energyRestorePerSec": 16.0,
+      "healthRestorePerSec": 2.0,
+      "wakeUpThreshold": 96,
+      "urgencyThreshold": 48,
+      "commitmentBonus": 0.35
+    },
+    "warm_campfire": {
+      "id": "warm_campfire",
+      "label": "ผิงไฟและวิจัย",
+      "icon": "icon_fire",
+      "energyRestorePerSec": 11.0,
+      "healthRestorePerSec": 2.8,
+      "durationSec": 3.5,
+      "baseNightScore": 0.56,
+      "commitmentBonus": 0.25
+    },
+    "seek_blessing": {
+      "id": "seek_blessing",
+      "label": "รับพรผลึกดารา",
+      "icon": "icon_compass",
+      "durationSec": 1.8,
+      "baseScore": 0.94
+    },
+    "build_kingdom": {
+      "id": "build_kingdom",
+      "label": "ก่อสร้างพัฒนาเมือง",
+      "icon": "icon_hammer",
+      "durationSec": 3.5,
+      "baseScore": 0.78,
+      "commitmentBonus": 0.3
+    },
+    "gather_resources": {
+      "id": "gather_resources",
+      "label": "ตัดไม้และสกัดหิน",
+      "icon": "icon_axe",
+      "durationSec": 2.2,
+      "baseScore": 0.58,
+      "commitmentBonus": 0.2
+    },
+    "explore_island": {
+      "id": "explore_island",
+      "label": "ออกสำรวจทวีป",
+      "icon": "icon_compass",
+      "baseScore": 0.32,
+      "pauseDurationSec": 1.8,
+      "maxWanderRadiusTiles": 22
+    }
+  }
+}

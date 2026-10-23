@@ -1,0 +1,79 @@
+{
+  "buildings": [
+    {
+      "id": "campfire",
+      "name": "กองไฟแคมป์ศักดิ์สิทธิ์ (Sacred Campfire)",
+      "tier": 1,
+      "icon": "🔥",
+      "requiredInt": 1,
+      "requiredLore": 0,
+      "woodCost": 0,
+      "stoneCost": 0,
+      "buildTimeSec": 5,
+      "maxCount": 1,
+      "followerCapBonus": 1,
+      "resourceType": "campfire",
+      "description": "ศูนย์กลางแห่งแรกของหมู่บ้าน ให้ความอบอุ่นและแสงสว่าง"
+    },
+    {
+      "id": "wooden_hut",
+      "name": "กระท่อมไม้ซุง (Timber Cabin)",
+      "tier": 2,
+      "icon": "🏠",
+      "requiredInt": 4,
+      "requiredLore": 25,
+      "woodCost": 20,
+      "stoneCost": 8,
+      "buildTimeSec": 6.5,
+      "maxCount": 5,
+      "followerCapBonus": 2,
+      "resourceType": "hut",
+      "description": "ที่พักพิงถาวร ดึงดูดผู้ติดตาม (Followers) เข้ามาอาศัยในอาณาจักร +2 คน"
+    },
+    {
+      "id": "farm_plot",
+      "name": "แปลงเกษตรข้าวสาลีและเบอร์รี่ (Farm Plot)",
+      "tier": 3,
+      "icon": "🌾",
+      "requiredInt": 5,
+      "requiredLore": 55,
+      "woodCost": 18,
+      "stoneCost": 6,
+      "buildTimeSec": 5.5,
+      "maxCount": 6,
+      "followerCapBonus": 1,
+      "resourceType": "farm_plot",
+      "description": "แหล่งผลิตอาหารหมุนเวียนในหมู่บ้าน ช่วยให้ประชากรอิ่มท้อง"
+    },
+    {
+      "id": "watchtower",
+      "name": "หอคอยเฝ้าระวัง (Palisade Watchtower)",
+      "tier": 3,
+      "icon": "🗼",
+      "requiredInt": 6,
+      "requiredLore": 85,
+      "woodCost": 25,
+      "stoneCost": 12,
+      "buildTimeSec": 7.0,
+      "maxCount": 3,
+      "followerCapBonus": 1,
+      "resourceType": "watchtower",
+      "description": "หอคอยสูงส่องสว่างและช่วยปกป้องหมู่บ้านจากสัตว์ป่าดุร้าย"
+    },
+    {
+      "id": "stone_house",
+      "name": "โรงตีเหล็กและบ้านหิน (Stone Smithy)",
+      "tier": 4,
+      "icon": "⚒️",
+      "requiredInt": 7,
+      "requiredLore": 120,
+      "woodCost": 30,
+      "stoneCost": 25,
+      "buildTimeSec": 8.5,
+      "maxCount": 3,
+      "followerCapBonus": 3,
+      "resourceType": "stone_smithy",
+      "description": "สุดยอดวิทยาการยุคหินและโลหะ รองรับผู้ติดตาม +3 คน และเพิ่มพลังการผลิต"
+    }
+  ]
+}

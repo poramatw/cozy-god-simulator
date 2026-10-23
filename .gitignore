@@ -1,8 +1,10 @@
 node_modules
 dist
+build
 .vercel
+.godot
+*.import
 .DS_Store
 *.log
-
-.vercel
 .env*
+godot.html

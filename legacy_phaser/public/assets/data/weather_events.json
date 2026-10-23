@@ -1,0 +1,48 @@
+{
+  "weatherEvents": [
+    {
+      "id": "fog",
+      "name": "หมอกเรืองแสง (Mystic Fog)",
+      "shortLabel": "Fog",
+      "icon": "🌫️",
+      "moveSpeedMultiplier": 1.0,
+      "berryRegrowMultiplier": 1.0,
+      "coldDamagePerSec": 0.0,
+      "hungerDecayMultiplier": 1.0,
+      "description": "สายหมอกสีฟ้าครามลอยคลอไปตามลำธารเรืองแสง"
+    },
+    {
+      "id": "rain",
+      "name": "สายฝนพรำ (Gentle Rain)",
+      "shortLabel": "Rain",
+      "icon": "🌧️",
+      "moveSpeedMultiplier": 0.85,
+      "berryRegrowMultiplier": 2.2,
+      "coldDamagePerSec": 0.0,
+      "hungerDecayMultiplier": 1.0,
+      "description": "พืชพรรณและเบอร์รี่เติบโตไวขึ้น 2 เท่า แต่พื้นเปียกลื่นเดินช้าลง"
+    },
+    {
+      "id": "drought",
+      "name": "ภัยแล้ง (Dry Spell)",
+      "shortLabel": "Drought",
+      "icon": "☀️",
+      "moveSpeedMultiplier": 0.95,
+      "berryRegrowMultiplier": 0.35,
+      "coldDamagePerSec": 0.0,
+      "hungerDecayMultiplier": 1.35,
+      "description": "อากาศร้อนจัด พุ่มเบอร์รี่งอกช้าลงและตัวเอกหิวเร็วขึ้น"
+    },
+    {
+      "id": "snow",
+      "name": "พายุหิมะ (Chilly Snow)",
+      "shortLabel": "Snow",
+      "icon": "❄️",
+      "moveSpeedMultiplier": 0.75,
+      "berryRegrowMultiplier": 0.25,
+      "coldDamagePerSec": 2.4,
+      "hungerDecayMultiplier": 1.2,
+      "description": "หนาวเหน็บ! หากบอทอยู่ห่างจากกองไฟ พลังชีวิตจะลดลงเรื่อยๆ"
+    }
+  ]
+}
