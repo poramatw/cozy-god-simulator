@@ -7,9 +7,9 @@ config_version=5
 [application]
 
 config/name="Chronicles of Morimar"
-config/description="Cozy 2D Pixel Life & God Simulator"
+config/description="Cozy 2D Pixel Life & God Simulator (Desktop Edition)"
 run/main_scene="res://src/world/MainWorld.tscn"
-config/features=PackedStringArray("4.3", "GL Compatibility")
+config/features=PackedStringArray("4.3", "Forward Plus")
 
 [autoload]
 
@@ -19,15 +19,18 @@ KingdomManager="*res://src/autoload/KingdomManager.gd"
 
 [display]
 
-window/size/viewport_width=1280
-window/size/viewport_height=720
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/window_width_override=1600
+window/size/window_height_override=900
 window/size/resizable=true
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
+window/stretch/aspect="expand"
+window/vsync/vsync_mode=1
 
 [rendering]
 
-renderer/rendering_method="gl_compatibility"
-renderer/rendering_method.web="gl_compatibility"
+renderer/rendering_method="forward_plus"
 textures/canvas_textures/default_texture_filter=0
-environment/defaults/default_clear_color=Color(0.08, 0.14, 0.22, 1)
+environment/defaults/default_clear_color=Color(0.06, 0.10, 0.18, 1)
+anti_aliasing/screen_space_roughness_limiter/enabled=false

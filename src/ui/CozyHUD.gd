@@ -22,6 +22,7 @@ var is_drawer_open: bool = false
 @onready var heir_container: HBoxContainer = $HeirModal/VBox/HeirCards
 
 func _ready() -> void:
+	apply_cozy_storybook_theme()
 	chronicle_drawer.visible = false
 	heir_modal.visible = false
 	genesis_modal.visible = true # Open at start
@@ -33,6 +34,58 @@ func _ready() -> void:
 	setup_god_tool_buttons()
 	setup_time_buttons()
 	update_resources_display()
+
+func apply_cozy_storybook_theme() -> void:
+	var style_parchment := StyleBoxFlat.new()
+	style_parchment.bg_color = Color("#fbf8f1")
+	style_parchment.border_color = Color("#6e473b")
+	style_parchment.set_border_width_all(2)
+	style_parchment.set_corner_radius_all(10)
+	style_parchment.content_margin_left = 14
+	style_parchment.content_margin_right = 14
+	style_parchment.content_margin_top = 8
+	style_parchment.content_margin_bottom = 8
+
+	var style_btn_normal := StyleBoxFlat.new()
+	style_btn_normal.bg_color = Color("#f5ede0")
+	style_btn_normal.border_color = Color("#8d5b4c")
+	style_btn_normal.set_border_width_all(2)
+	style_btn_normal.set_corner_radius_all(8)
+	style_btn_normal.content_margin_left = 10
+	style_btn_normal.content_margin_right = 10
+	style_btn_normal.content_margin_top = 6
+	style_btn_normal.content_margin_bottom = 6
+
+	var style_btn_hover := StyleBoxFlat.new()
+	style_btn_hover.bg_color = Color("#fffbf5")
+	style_btn_hover.border_color = Color("#b45309")
+	style_btn_hover.set_border_width_all(2)
+	style_btn_hover.set_corner_radius_all(8)
+	style_btn_hover.content_margin_left = 10
+	style_btn_hover.content_margin_right = 10
+	style_btn_hover.content_margin_top = 6
+	style_btn_hover.content_margin_bottom = 6
+
+	$TopLeftPill.add_theme_stylebox_override("panel", style_parchment)
+	$TopRightPill.add_theme_stylebox_override("panel", style_parchment)
+	$BottomBar.add_theme_stylebox_override("panel", style_parchment)
+	$ChronicleDrawer.add_theme_stylebox_override("panel", style_parchment)
+	$GenesisModal.add_theme_stylebox_override("panel", style_parchment)
+	$HeirModal.add_theme_stylebox_override("panel", style_parchment)
+
+	style_buttons_in_node(self, style_btn_normal, style_btn_hover)
+
+func style_buttons_in_node(node: Node, normal: StyleBox, hover: StyleBox) -> void:
+	for c in node.get_children():
+		if c is Button:
+			c.add_theme_stylebox_override("normal", normal)
+			c.add_theme_stylebox_override("hover", hover)
+			c.add_theme_stylebox_override("pressed", hover)
+			c.add_theme_color_override("font_color", Color("#3e2723"))
+			c.add_theme_color_override("font_hover_color", Color("#b45309"))
+		elif c is Label:
+			c.add_theme_color_override("font_color", Color("#3e2723"))
+		style_buttons_in_node(c, normal, hover)
 
 func setup_god_tool_buttons() -> void:
 	var tools_box := $BottomBar/ToolsHBox

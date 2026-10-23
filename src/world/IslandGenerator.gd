@@ -8,17 +8,18 @@ const TILE_SIZE: int = 24
 
 var grid: Array = []
 var resources: Array = []
+var coastal_tiles: Array = []
 var campfire_node: Node2D = null
 
-@onready var deep_water_layer: TileMapLayer = $"../DeepWaterLayer"
-@onready var ground_layer: TileMapLayer = $"../GroundLayer"
-@onready var foliage_container: Node2D = $"../FoliageYSorted"
-@onready var buildings_container: Node2D = $"../BuildingsYSorted"
+# Procedural Textured Terrains (No flat rects!)
+var tex_deep_water: ImageTexture
+var tex_shallow_water: ImageTexture
+var tex_sand: ImageTexture
+var tex_grass: ImageTexture
+var tex_forest: ImageTexture
+var tex_shadow: ImageTexture
 
-var wind_shader: Shader = preload("res://src/world/shaders/wind_sway.gdshader")
-var wind_material: ShaderMaterial
-
-# Atlas textures sliced from True Alpha 2x2 sprite sheets
+# Sliced Atlas Sprites from True Alpha HD Sheets
 var tex_campfire: AtlasTexture
 var tex_cabin: AtlasTexture
 var tex_hut: AtlasTexture
@@ -33,9 +34,21 @@ var tex_mountain_rock: AtlasTexture
 var tex_starfall_shrine: AtlasTexture
 var tex_pink_crystal: AtlasTexture
 
-var tex_shadow: ImageTexture
+var wind_shader: Shader = preload("res://src/world/shaders/wind_sway.gdshader")
+var wind_material: ShaderMaterial
+var anim_clock: float = 0.0
+
+@onready var foliage_container: Node2D = $"../FoliageYSorted"
+@onready var buildings_container: Node2D = $"../BuildingsYSorted"
 
 func _ready() -> void:
+	# Generate Rich Hand-Painted Textures
+	tex_deep_water = TerrainTextureGenerator.create_deep_water_texture()
+	tex_shallow_water = TerrainTextureGenerator.create_shallow_water_texture()
+	tex_sand = TerrainTextureGenerator.create_sand_texture()
+	tex_grass = TerrainTextureGenerator.create_grass_texture()
+	tex_forest = TerrainTextureGenerator.create_forest_soil_texture()
+
 	wind_material = ShaderMaterial.new()
 	wind_material.shader = wind_shader
 	wind_material.set_shader_parameter("speed", 2.2)
@@ -45,6 +58,11 @@ func _ready() -> void:
 	create_drop_shadow_texture()
 	setup_atlas_textures()
 
+func _process(delta: float) -> void:
+	anim_clock += delta
+	# Update shoreline foam wave crest animation
+	queue_redraw()
+
 func create_drop_shadow_texture() -> void:
 	var img := Image.create(64, 32, false, Image.FORMAT_RGBA8)
 	for y in range(32):
@@ -53,7 +71,7 @@ func create_drop_shadow_texture() -> void:
 			var ny: float = (float(y) - 16.0) / 14.0
 			var dist_sq: float = nx * nx + ny * ny
 			if dist_sq <= 1.0:
-				var alpha: float = (1.0 - sqrt(dist_sq)) * 0.42
+				var alpha: float = (1.0 - sqrt(dist_sq)) * 0.44
 				img.set_pixel(x, y, Color(0.04, 0.06, 0.10, alpha))
 			else:
 				img.set_pixel(x, y, Color(0, 0, 0, 0))
@@ -100,10 +118,11 @@ func generate_island(seed_val: int = 0) -> void:
 	var noise := FastNoiseLite.new()
 	noise.seed = seed_val
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.035
+	noise.frequency = 0.032
 	noise.fractal_octaves = 4
 
 	grid.clear()
+	coastal_tiles.clear()
 	for r in resources:
 		if is_instance_valid(r):
 			r.queue_free()
@@ -117,84 +136,97 @@ func generate_island(seed_val: int = 0) -> void:
 		for x in range(MAP_WIDTH):
 			var dist: float = Vector2(float(x) - center_x, float(y) - center_y).length() / (float(MAP_WIDTH) * 0.44)
 			var raw_n: float = (noise.get_noise_2d(float(x), float(y)) + 1.0) * 0.5
-			var elev: float = clampf(raw_n - pow(dist, 1.8) * 0.55, 0.0, 1.0)
+			var elev: float = clampf(raw_n - pow(dist, 1.7) * 0.52, 0.0, 1.0)
 
 			var biome_id: String = "deep_water"
 			var walkable: bool = false
-			if elev < 0.20:
+			if elev < 0.22:
 				biome_id = "deep_water"
 				walkable = false
-			elif elev < 0.32:
+			elif elev < 0.34:
 				biome_id = "shallow_water"
 				walkable = true
-			elif elev < 0.44:
+			elif elev < 0.46:
 				biome_id = "sand"
 				walkable = true
-			elif elev < 0.72:
+			elif elev < 0.74:
 				biome_id = "grass"
 				walkable = true
 			else:
 				biome_id = "forest"
 				walkable = true
 
-			row.append({
+			var tile_data = {
 				"x": x,
 				"y": y,
 				"elevation": elev,
 				"biome": biome_id,
 				"walkable": walkable,
 				"resource": null
-			})
+			}
+			row.append(tile_data)
+
+			# Detect coastline for wave foam animation
+			if biome_id == "sand" or biome_id == "shallow_water":
+				coastal_tiles.append(tile_data)
+
 		grid.append(row)
 
-	render_tiles()
 	spawn_starter_sanctuary(int(center_x), int(center_y))
 	spawn_nature_flora(seed_val)
 
 	var world_center := Vector2(center_x * float(TILE_SIZE), center_y * float(TILE_SIZE))
 	island_generated.emit(world_center)
-
-func render_tiles() -> void:
-	# Render procedurally to GroundLayer using custom tile colors or polygons
 	queue_redraw()
 
 func _draw() -> void:
 	if grid.is_empty():
 		return
 
-	# Draw background ocean & ground tiles
+	# 1. Draw Textured Landscape Tiles
+	var uv_full := Rect2(0, 0, 1, 1)
+
 	for y in range(MAP_HEIGHT):
 		for x in range(MAP_WIDTH):
 			var tile: Dictionary = grid[y][x]
 			var rect := Rect2(Vector2(x * TILE_SIZE, y * TILE_SIZE), Vector2(TILE_SIZE, TILE_SIZE))
-			var col := Color(0.08, 0.16, 0.28, 1.0) # deep water
+			var tex: Texture2D = tex_deep_water
 
 			match tile["biome"]:
-				"deep_water": col = Color(0.09, 0.18, 0.32, 1.0)
-				"shallow_water": col = Color(0.20, 0.48, 0.62, 1.0)
-				"sand": col = Color(0.85, 0.76, 0.56, 1.0)
-				"grass": col = Color(0.38, 0.64, 0.36, 1.0)
-				"forest": col = Color(0.24, 0.46, 0.28, 1.0)
+				"deep_water": tex = tex_deep_water
+				"shallow_water": tex = tex_shallow_water
+				"sand": tex = tex_sand
+				"grass": tex = tex_grass
+				"forest": tex = tex_forest
 
-			draw_rect(rect, col)
+			if tex:
+				draw_texture_rect(tex, rect, false)
+
+	# 2. Animated Shoreline Wave Foam (Sine wave ripple on coastlines)
+	for ct in coastal_tiles:
+		var wave: float = sin(anim_clock * 2.2 + float(ct["x"]) * 0.45 + float(ct["y"]) * 0.35)
+		if wave > 0.3:
+			var foam_alpha: float = (wave - 0.3) * 0.65
+			var foam_pos := Vector2(float(ct["x"] * TILE_SIZE + TILE_SIZE / 2), float(ct["y"] * TILE_SIZE + TILE_SIZE / 2))
+			draw_circle(foam_pos, 4.5 + wave * 2.5, Color(1, 1, 1, foam_alpha))
 
 func spawn_starter_sanctuary(cx: int, cy: int) -> void:
 	# Central Campfire
-	campfire_node = spawn_resource("campfire", cx, cy, tex_campfire, Vector2(44, 44))
+	campfire_node = spawn_resource("campfire", cx, cy, tex_campfire, Vector2(56, 56))
 	if campfire_node:
 		var light := PointLight2D.new()
 		light.name = "CampfireLight"
-		light.color = Color(1.0, 0.72, 0.32, 1.0)
-		light.energy = 1.35
-		light.texture_scale = 3.5
+		light.color = Color(1.0, 0.75, 0.38, 1.0)
+		light.energy = 1.45
+		light.texture_scale = 4.2
 		campfire_node.add_child(light)
 
 	# Starter huts around campfire
-	spawn_resource("round_hut", cx - 3, cy - 2, tex_hut, Vector2(56, 56))
-	spawn_resource("lantern_tree", cx + 4, cy - 2, tex_lantern_tree, Vector2(64, 64), true)
-	spawn_resource("lantern_tree", cx - 4, cy + 3, tex_lantern_tree, Vector2(64, 64), true)
-	spawn_resource("crimson_canopy", cx + 3, cy + 4, tex_crimson_canopy, Vector2(60, 60), true)
-	spawn_resource("pink_crystal", cx - 2, cy + 4, tex_pink_crystal, Vector2(36, 36))
+	spawn_resource("round_hut", cx - 3, cy - 2, tex_hut, Vector2(68, 68))
+	spawn_resource("lantern_tree", cx + 4, cy - 2, tex_lantern_tree, Vector2(80, 80), true)
+	spawn_resource("lantern_tree", cx - 4, cy + 3, tex_lantern_tree, Vector2(80, 80), true)
+	spawn_resource("crimson_canopy", cx + 3, cy + 4, tex_crimson_canopy, Vector2(74, 74), true)
+	spawn_resource("pink_crystal", cx - 2, cy + 4, tex_pink_crystal, Vector2(44, 44))
 
 func spawn_nature_flora(seed_val: int) -> void:
 	var rng := RandomNumberGenerator.new()
@@ -215,23 +247,23 @@ func spawn_nature_flora(seed_val: int) -> void:
 
 			var roll: float = rng.randf()
 			if tile["biome"] == "forest":
-				if roll < 0.22:
+				if roll < 0.24:
 					var pick: float = rng.randf()
 					if pick < 0.35:
-						spawn_resource("lantern_tree", x, y, tex_lantern_tree, Vector2(64, 64), true)
+						spawn_resource("lantern_tree", x, y, tex_lantern_tree, Vector2(80, 80), true)
 					elif pick < 0.65:
-						spawn_resource("crimson_canopy", x, y, tex_crimson_canopy, Vector2(60, 60), true)
+						spawn_resource("crimson_canopy", x, y, tex_crimson_canopy, Vector2(74, 74), true)
 					else:
-						spawn_resource("forest_tree", x, y, tex_forest_tree, Vector2(60, 60), true)
-				elif roll < 0.32:
-					spawn_resource("berry_bush", x, y, tex_berry_bush, Vector2(38, 38), true)
+						spawn_resource("forest_tree", x, y, tex_forest_tree, Vector2(76, 76), true)
+				elif roll < 0.34:
+					spawn_resource("berry_bush", x, y, tex_berry_bush, Vector2(46, 46), true)
 			elif tile["biome"] == "grass":
-				if roll < 0.08:
-					spawn_resource("berry_bush", x, y, tex_berry_bush, Vector2(38, 38), true)
-				elif roll < 0.14:
-					spawn_resource("forest_tree", x, y, tex_forest_tree, Vector2(56, 56), true)
-				elif roll < 0.16 and tile["elevation"] > 0.62:
-					spawn_resource("mountain_rock", x, y, tex_mountain_rock, Vector2(48, 48))
+				if roll < 0.09:
+					spawn_resource("berry_bush", x, y, tex_berry_bush, Vector2(46, 46), true)
+				elif roll < 0.15:
+					spawn_resource("forest_tree", x, y, tex_forest_tree, Vector2(72, 72), true)
+				elif roll < 0.18 and tile["elevation"] > 0.62:
+					spawn_resource("mountain_rock", x, y, tex_mountain_rock, Vector2(58, 58))
 
 func spawn_resource(res_type: String, tx: int, ty: int, tex: Texture2D, size: Vector2, is_flora: bool = false) -> Node2D:
 	if tx < 0 or tx >= MAP_WIDTH or ty < 0 or ty >= MAP_HEIGHT:
@@ -247,8 +279,8 @@ func spawn_resource(res_type: String, tx: int, ty: int, tex: Texture2D, size: Ve
 	if tex_shadow:
 		var shadow := Sprite2D.new()
 		shadow.texture = tex_shadow
-		shadow.scale = Vector2(size.x / 48.0, size.y / 64.0)
-		shadow.position = Vector2(0, size.y * 0.28)
+		shadow.scale = Vector2(size.x / 46.0, size.y / 62.0)
+		shadow.position = Vector2(0, size.y * 0.26)
 		shadow.z_index = -1
 		root.add_child(shadow)
 
@@ -257,7 +289,7 @@ func spawn_resource(res_type: String, tx: int, ty: int, tex: Texture2D, size: Ve
 		var spr := Sprite2D.new()
 		spr.texture = tex
 		spr.scale = Vector2(size.x / tex.get_width(), size.y / tex.get_height())
-		spr.position = Vector2(0, -size.y * 0.15)
+		spr.position = Vector2(0, -size.y * 0.16)
 		if is_flora and wind_material:
 			spr.material = wind_material
 		root.add_child(spr)

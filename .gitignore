@@ -4,6 +4,7 @@ build
 .vercel
 .godot
 *.import
+*.exe
 .DS_Store
 *.log
 .env*
